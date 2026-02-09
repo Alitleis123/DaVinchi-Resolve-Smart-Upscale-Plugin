@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 @dataclass
-class upscaleConfig:
+class UpscaleConfig:
     upscale_enabled: bool = False
     interprolate_enabled: bool = False
 
