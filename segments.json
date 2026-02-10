@@ -1,0 +1,14 @@
+{
+  "settings": {
+    "sensitivity": 0.2,
+    "min_segment_frames": 4,
+    "merge_gap_frames": 2
+  },
+  "segments": [
+    {
+      "start": 2,
+      "end": 7,
+      "length": 6
+    }
+  ]
+}
