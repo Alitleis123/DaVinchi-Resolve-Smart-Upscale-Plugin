@@ -149,15 +149,38 @@ function win.On.DetectBtn.Clicked(ev)
 end
 
 function win.On.CutFrameBtn.Clicked(ev)
-    print("[Eternal2x] Cut and Frame is not implemented yet.")
+    if REPO_ROOT == "" then
+        print("[Eternal2x] Missing repo_root in Eternal2x.conf.")
+        return
+    end
+    local cmd = "cd " .. shell_quote(REPO_ROOT)
+        .. " && " .. shell_quote(PYTHON)
+        .. " -m Stages.resolve_cut_and_frame"
+    run_command(cmd)
 end
 
 function win.On.RegroupBtn.Clicked(ev)
-    print("[Eternal2x] Regroup is not implemented yet.")
+    if REPO_ROOT == "" then
+        print("[Eternal2x] Missing repo_root in Eternal2x.conf.")
+        return
+    end
+    local cmd = "cd " .. shell_quote(REPO_ROOT)
+        .. " && " .. shell_quote(PYTHON)
+        .. " -m Stages.resolve_regroup"
+    run_command(cmd)
 end
 
 function win.On.UpscaleBtn.Clicked(ev)
-    print("[Eternal2x] Upscale and Interpolate is not implemented yet.")
+    if REPO_ROOT == "" then
+        print("[Eternal2x] Missing repo_root in Eternal2x.conf.")
+        return
+    end
+    local v = sensitivity_value()
+    local cmd = "cd " .. shell_quote(REPO_ROOT)
+        .. " && " .. shell_quote(PYTHON)
+        .. " -m Stages.resolve_upscale_interpolate"
+        .. " --sensitivity " .. string.format("%.4f", v)
+    run_command(cmd)
 end
 
 win:Show()
