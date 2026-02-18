@@ -9,7 +9,7 @@ Eternal2x is a creator‑friendly smart upscale workflow for DaVinci Resolve. It
 - Runs a final pass: fixed 2× upscale + interpolation gated by sensitivity.
 
 ## UI
-- Buttons: `Detect`, `Cut and Frame`, `Regroup`, `Upscale and Interpolate`
+- Buttons: `Detect`, `Sequence`, `Regroup`, `Upscale and Interpolate`
 - Slider: `Interpolate Sensitivity` (higher = less interpolation, lower = more)
 
 ## Install (Workspace Panel)
@@ -22,7 +22,7 @@ Eternal2x is a creator‑friendly smart upscale workflow for DaVinci Resolve. It
 1. Open a timeline and select the clip you want to process.
 2. Open `Workspace → Scripts → Eternal2x`.
 3. Click `Detect` and adjust any markers that need fine‑tuning.
-4. Click `Cut and Frame` to generate 1‑frame segments at marker positions.
+4. Click `Sequence` to generate 1‑frame segments at marker positions.
 5. Click `Regroup` to remove gaps and make the sequence continuous.
 6. Set `Interpolate Sensitivity` and click `Upscale and Interpolate`.
 
@@ -35,7 +35,7 @@ Eternal2x is a creator‑friendly smart upscale workflow for DaVinci Resolve. It
 ## Reminders / Implementation Notes
 - Keep the UI minimal: no extra settings beyond the single sensitivity slider.
 - Only `[DSU]` markers should be created and cleaned by the tool.
-- Cut logic must always respect user‑adjusted markers.
+- Sequence logic must always respect user‑adjusted markers.
 - Regroup should be a simple, robust gap‑removal step.
 
 ## Repo Commands
