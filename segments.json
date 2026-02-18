@@ -4,11 +4,7 @@
     "min_segment_frames": 4,
     "merge_gap_frames": 2
   },
-  "segments": [
-    {
-      "start": 2,
-      "end": 7,
-      "length": 6
-    }
-  ]
+  "fps": 60.0,
+  "frame_count": 776,
+  "segments": []
 }

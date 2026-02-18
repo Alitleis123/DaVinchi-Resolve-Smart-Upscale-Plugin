@@ -1,10 +1,12 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List
 from Pipeline.config import UpscaleConfig
 
 import argparse
 import json
 
+from Stages.motion_score import compute_motion_scores
 
 @dataclass
 class Segment:
@@ -80,15 +82,22 @@ def main():
         description="Detect motion segments from per-frame motion scores."
     )
 
-    parser.add_argument(
+    source_group = parser.add_mutually_exclusive_group(required=True)
+    source_group.add_argument(
         "--scores",
-        required=True,
-        help="Comma-separated list of motion scores, e.g. 0.0,0.1,0.3,0.25",
+        default=None,
+        help="Comma-separated list of motion scores, e.g. 0.0,0.1,0.3,0.25.",
     )
+    source_group.add_argument("--video", default=None, help="Path to input video file")
     parser.add_argument(
         "--out",
         default="segments.json",
         help="Output JSON path (default: segments.json)",
+    )
+    parser.add_argument(
+        "--scores_out",
+        default=None,
+        help="Optional JSON output of raw scores (fps + scores list)",
     )
 
     parser.add_argument("--sensitivity", type=float, default=None, help="Override cfg.sensitivity")
@@ -96,8 +105,6 @@ def main():
     parser.add_argument("--merge_gap_frames", type=int, default=None, help="Override cfg.merge_gap_frames")
 
     args = parser.parse_args()
-
-    scores = [float(x.strip()) for x in args.scores.split(",") if x.strip() != ""]
 
     cfg = UpscaleConfig()
 
@@ -108,7 +115,14 @@ def main():
     if args.merge_gap_frames is not None:
         cfg.merge_gap_frames = args.merge_gap_frames
 
+    if args.video:
+        scores, fps = compute_motion_scores(Path(args.video), cfg)
+    else:
+        scores = [float(x.strip()) for x in args.scores.split(",") if x.strip() != ""]
+        fps = 0.0
+
     segments = detect_motion_segments(scores, cfg)
+    frame_count = len(scores)
 
     payload = {
         "settings": {
@@ -116,11 +130,18 @@ def main():
             "min_segment_frames": cfg.min_segment_frames,
             "merge_gap_frames": cfg.merge_gap_frames,
         },
+        "fps": fps,
+        "frame_count": frame_count,
         "segments": segments_to_dict(segments),
     }
 
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
+
+    if args.scores_out:
+        scores_payload = {"fps": fps, "scores": scores}
+        with open(args.scores_out, "w", encoding="utf-8") as f:
+            json.dump(scores_payload, f, indent=2)
 
     print(f"Wrote {len(segments)} segments -> {args.out}")
 
