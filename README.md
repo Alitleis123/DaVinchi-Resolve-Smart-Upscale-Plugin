@@ -32,12 +32,6 @@ Eternal2x is a creator‑friendly smart upscale workflow for DaVinci Resolve. It
 - Marker positions (after manual edits) are the source of truth for cutting.
 - Upscale is fixed at 2× for safety and consistency in the MVP.
 
-## Reminders / Implementation Notes
-- Keep the UI minimal: no extra settings beyond the single sensitivity slider.
-- Only `[DSU]` markers should be created and cleaned by the tool.
-- Sequence logic must always respect user‑adjusted markers.
-- Regroup should be a simple, robust gap‑removal step.
-
 ## Repo Commands
 - Detect from a video and write segments:
   - `./.venv/bin/python -m Stages.frame_detect --video "PATH/TO/CLIP.mp4" --out "segments.json" --scores_out "scores.json"`
