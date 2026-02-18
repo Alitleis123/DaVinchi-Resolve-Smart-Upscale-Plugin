@@ -105,9 +105,17 @@ def main():
         default=DEFAULT_COLOR,
         help="Resolve marker color (default: Blue)",
     )
+    parser.add_argument(
+        "--sensitivity",
+        type=float,
+        default=None,
+        help="Override cfg.sensitivity when computing from --video",
+    )
     args = parser.parse_args()
 
     cfg = UpscaleConfig()
+    if args.sensitivity is not None:
+        cfg.sensitivity = args.sensitivity
     if args.video:
         payload = _compute_segments_from_video(Path(args.video), cfg)
     else:
