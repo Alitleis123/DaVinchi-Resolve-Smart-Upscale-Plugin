@@ -8,7 +8,7 @@ Eternal2x is a creator‑friendly smart upscale workflow for DaVinci Resolve. It
 - Regroups the timeline to remove gaps and make the sequence continuous.
 - Runs a final pass: fixed 2× upscale + interpolation gated by sensitivity.
 
-## UI (MVP)
+## UI
 - Buttons: `Detect`, `Cut and Frame`, `Regroup`, `Upscale and Interpolate`
 - Slider: `Interpolate Sensitivity` (higher = less interpolation, lower = more)
 

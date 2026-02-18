@@ -103,7 +103,7 @@ local win = disp:AddWindow({
     ]]
 }, ui:VGroup{
     ui:Button{ID="DetectBtn", Text="Detect"},
-    ui:Button{ID="CutFrameBtn", Text="Cut and Frame"},
+    ui:Button{ID="CutFrameBtn", Text="Sequence"},
     ui:Button{ID="RegroupBtn", Text="Regroup"},
     ui:Button{ID="UpscaleBtn", Text="Upscale and Interpolate"},
     ui:Label{ID="SensLabel", Text="Interpolate Sensitivity: 0.20"},
@@ -155,7 +155,7 @@ function win.On.CutFrameBtn.Clicked(ev)
     end
     local cmd = "cd " .. shell_quote(REPO_ROOT)
         .. " && " .. shell_quote(PYTHON)
-        .. " -m Stages.resolve_cut_and_frame"
+        .. " -m Stages.resolve_cut_and_sequence"
     run_command(cmd)
 end
 
