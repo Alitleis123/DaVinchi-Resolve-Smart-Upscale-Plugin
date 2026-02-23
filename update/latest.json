@@ -1,11 +1,11 @@
-{
-  "version": "0.1.2",
-  "windows": {
-    "url": "https://github.com/Alitleis123/DaVinchi-Resolve-Smart-Upscale-Plugin/releases/download/v0.1.2/eternal2x-win.zip",
-    "sha256": "a89af229f9bd8bbddf166b160de85160c2fae403dd96899d7ab81b8da3cd9dfb"
-  },
-  "macos": {
-    "url": "https://github.com/Alitleis123/DaVinchi-Resolve-Smart-Upscale-Plugin/releases/download/v0.1.2/eternal2x-mac.zip",
-    "sha256": "a89af229f9bd8bbddf166b160de85160c2fae403dd96899d7ab81b8da3cd9dfb"
-  }
+﻿{
+    "version":  "0.1.2",
+    "windows":  {
+                    "url":  "https://github.com/Alitleis123/DaVinchi-Resolve-Smart-Upscale-Plugin/releases/download/v0.1.2/eternal2x-win.zip",
+                    "sha256":  "cd6fbd510245f0a6ab70379c582a2bf8cb4e64bc45d889b0338fdfba930f93cb"
+                },
+    "macos":  {
+                  "url":  "https://github.com/Alitleis123/DaVinchi-Resolve-Smart-Upscale-Plugin/releases/download/v0.1.2/eternal2x-mac.zip",
+                  "sha256":  "cd6fbd510245f0a6ab70379c582a2bf8cb4e64bc45d889b0338fdfba930f93cb"
+              }
 }
