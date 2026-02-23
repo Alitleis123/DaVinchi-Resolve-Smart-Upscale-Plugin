@@ -13,10 +13,18 @@ Eternal2x is a creator‑friendly smart upscale workflow for DaVinci Resolve. It
 - Slider: `Interpolate Sensitivity` (higher = less interpolation, lower = more)
 
 ## Install (Workspace Panel)
-1. Run the installer:
+Option A — Installer (terminal):
+1. Run:
    - `./.venv/bin/python Installer/install_eternal2x.py`
 2. Restart Resolve.
 3. Open: `Workspace → Scripts → Eternal2x`
+
+Option B — Drag & Drop (no terminal):
+1. Build the drag‑and‑drop package:
+   - `./.venv/bin/python Installer/build_dragdrop.py`
+2. Copy the generated folder `dist/Eternal2x` into Resolve’s Scripts/Comp folder.
+3. Restart Resolve.
+4. Open: `Workspace → Scripts → Eternal2x`
 
 ## Quick Start
 1. Open a timeline and select the clip you want to process.

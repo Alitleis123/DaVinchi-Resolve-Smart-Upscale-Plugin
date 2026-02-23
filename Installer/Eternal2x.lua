@@ -86,8 +86,8 @@ local disp = bmd.UIDispatcher(ui)
 
 local root = script_dir() or ""
 local conf = read_conf((root or "") .. "Eternal2x.conf")
-local REPO_ROOT = conf["repo_root"] or ""
-local PYTHON = conf["python"] or "python3"
+local REPO_ROOT = conf["repo_root"] or root or ""
+local PYTHON = conf["python"] or "python"
 
 local win = disp:AddWindow({
     ID = "Eternal2x",
