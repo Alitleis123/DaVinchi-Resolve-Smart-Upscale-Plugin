@@ -5,6 +5,11 @@ from pathlib import Path
 import shutil
 import sys
 
+DEFAULT_UPDATE_URL = (
+    "https://raw.githubusercontent.com/"
+    "Alitleis123/DaVinchi-Resolve-Smart-Upscale-Plugin/main/update/latest.json"
+)
+
 
 def _resolve_comp_dir() -> Path:
     if sys.platform.startswith("win"):
@@ -55,10 +60,10 @@ def _pick_python(repo_root: Path) -> str:
 
 def main() -> int:
     repo_root = Path(__file__).resolve().parent.parent
-    src_lua = repo_root / "Installer" / "Eternal2x.lua"
+    src_lua = repo_root / "Installer" / "Eternal2xLauncher.lua"
 
     if not src_lua.exists():
-        print(f"Missing UI script: {src_lua}")
+        print(f"Missing launcher script: {src_lua}")
         return 1
 
     dest_dir = _resolve_comp_dir()
@@ -72,12 +77,15 @@ def main() -> int:
 
     conf_path = dest_dir / "Eternal2x.conf"
     conf_path.write_text(
-        f"repo_root={repo_root}\npython={python_path}\n",
+        f"repo_root={repo_root}\n"
+        f"python={python_path}\n"
+        f"update_url={DEFAULT_UPDATE_URL}\n"
+        "auto_update=true\n",
         encoding="utf-8",
     )
 
-    print("Installed Eternal2x script panel.")
-    print(f"Script: {dest_lua}")
+    print("Installed Eternal2x launcher.")
+    print(f"Launcher: {dest_lua}")
     print(f"Config: {conf_path}")
     print("Restart Resolve to see Workspace > Scripts > Eternal2x.")
     return 0

@@ -9,26 +9,26 @@ Eternal2x is a creator-friendly smart upscale workflow for DaVinci Resolve. It d
 - Runs a final pass: fixed 2x upscale + interpolation gated by sensitivity.
 
 ## UI
-- Buttons: `Detect`, `Sequence`, `Regroup`, `Upscale and Interpolate`
+- Buttons: `Detect`, `Sequence`, `Regroup`, `Upscale and Interpolate`, `Check for Updates`
 - Slider: `Interpolate Sensitivity` (higher = less interpolation, lower = more)
 
-## Install (Workspace Panel)
-Option A - Installer (recommended):
-1. Run:
-   - `python Installer/install_eternal2x.py`
-2. Installer target folder:
+## Install (One-Time EXE/App)
+1. Run the installer executable once:
+   - Windows: `Eternal2xInstaller.exe`
+   - macOS: `Eternal2xInstaller.app` (or packaged executable)
+2. The installer writes Eternal2x into Resolve scripts:
    - Windows: `%APPDATA%\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Comp\`
    - macOS: `~/Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Scripts/Comp/`
 3. Restart Resolve.
 4. Open: `Workspace -> Scripts -> Eternal2x`
 
-Option B - Drag and Drop:
-1. Build or download the `Eternal2x` drag-and-drop folder.
-2. Copy `Eternal2x` into Resolve's `Scripts/Comp` folder:
-   - Windows: `%APPDATA%\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Comp\`
-   - macOS: `~/Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Scripts/Comp/`
-3. Restart Resolve.
-4. Open: `Workspace -> Scripts -> Eternal2x`
+## Auto-Update Behavior
+- Goal: install once, no manual copy/reinstall for normal updates.
+- Eternal2x checks cloud metadata at startup (`update/latest.json` in this repo).
+- If a newer version exists for your platform, it downloads and applies update files.
+- You can also trigger this manually using `Check for Updates` in the plugin UI.
+- After an update is applied, restart Resolve to load the new version.
+- Re-run installer only if install files are missing or repo path changes.
 
 ## Quick Start
 1. Open a timeline and select the clip you want to process.
@@ -43,12 +43,6 @@ Option B - Drag and Drop:
 - Segments above the sensitivity threshold are merged and filtered to avoid tiny bursts.
 - Marker positions (after manual edits) are the source of truth for cutting.
 - Upscale is fixed at 2x for safety and consistency in the MVP.
-
-## Repo Commands
-- Detect from a video and write segments:
-  - `python -m Stages.frame_detect --video "PATH/TO/CLIP.mp4" --out "segments.json" --scores_out "scores.json"`
-- Place markers from segments:
-  - `python -m Stages.resolve_detect_markers --segments "segments.json"`
 
 ## Questions
 Email `Justlighttbusiness@gmail.com`

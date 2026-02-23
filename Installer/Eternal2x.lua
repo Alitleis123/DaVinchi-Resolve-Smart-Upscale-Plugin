@@ -33,6 +33,20 @@ local function read_conf(path)
     return conf
 end
 
+local function parse_bool(value, default_value)
+    if value == nil then
+        return default_value
+    end
+    local s = tostring(value):lower()
+    if s == "1" or s == "true" or s == "yes" or s == "on" then
+        return true
+    end
+    if s == "0" or s == "false" or s == "no" or s == "off" then
+        return false
+    end
+    return default_value
+end
+
 local function shell_quote(s)
     if not s then return "" end
     if package.config:sub(1, 1) == "\\" then
@@ -103,6 +117,8 @@ local root = trim_trailing_sep(script_dir() or "")
 local conf = read_conf((root ~= "" and (root .. "/") or "") .. "Eternal2x.conf")
 local REPO_ROOT = trim_trailing_sep(conf["repo_root"] or root or "")
 local PYTHON = conf["python"] or (is_windows() and "python" or "python3")
+local UPDATE_URL = conf["update_url"] or ""
+local AUTO_UPDATE = parse_bool(conf["auto_update"], true)
 
 local win = disp:AddWindow({
     ID = "Eternal2x",
@@ -161,10 +177,13 @@ local win = disp:AddWindow({
     ui:Button{ID="CutFrameBtn", Text="Sequence"},
     ui:Button{ID="RegroupBtn", Text="Regroup"},
     ui:Button{ID="UpscaleBtn", Text="Upscale and Interpolate"},
+    ui:Button{ID="UpdateBtn", Text="Check for Updates"},
     ui:Label{ID="SensLabel", Text="Interpolate Sensitivity: 0.20"},
     ui:Slider{ID="SensSlider", Orientation="Horizontal", Minimum=0, Maximum=100, Value=20},
     ui:Label{ID="Status", Text="Ready.", ObjectName="Status", WordWrap=true},
 })
+
+local items = win:GetItems()
 
 function win.On.Eternal2x.Close(ev)
     disp:ExitLoop()
@@ -172,18 +191,25 @@ end
 
 local function set_status(msg)
     local line = msg or ""
-    win.Status.Text = line
+    if items and items.Status then
+        items.Status.Text = line
+    end
     print("[Eternal2x] " .. line)
 end
 
 local function sensitivity_value()
-    local v = win.SensSlider.Value or 20
+    local v = 20
+    if items and items.SensSlider and items.SensSlider.Value then
+        v = items.SensSlider.Value
+    end
     return v / 100.0
 end
 
 function win.On.SensSlider.ValueChanged(ev)
     local v = sensitivity_value()
-    win.SensLabel.Text = string.format("Interpolate Sensitivity: %.2f", v)
+    if items and items.SensLabel then
+        items.SensLabel.Text = string.format("Interpolate Sensitivity: %.2f", v)
+    end
 end
 
 local function build_command(module_name, extra_args)
@@ -211,6 +237,32 @@ local function run_stage(stage_label, module_name, extra_args)
         set_status(stage_label .. " finished.")
     else
         set_status(stage_label .. " failed. Check Console for details.")
+    end
+end
+
+local function run_update(auto_mode)
+    if REPO_ROOT == "" then
+        set_status("Missing repo root. Reinstall using Installer/install_eternal2x.py.")
+        return
+    end
+    if UPDATE_URL == "" then
+        set_status("No update URL configured.")
+        return
+    end
+    local args = " --meta-url " .. shell_quote(UPDATE_URL)
+    if auto_mode then
+        args = args .. " --auto"
+    end
+    if not auto_mode then
+        set_status("Checking for updates...")
+    end
+    local ok = run_command(build_command("Stages.resolve_update", args))
+    if not auto_mode then
+        if ok == true or ok == 0 then
+            set_status("Update check complete. See Console for details.")
+        else
+            set_status("Update failed. See Console for details.")
+        end
     end
 end
 
@@ -245,10 +297,17 @@ function win.On.UpscaleBtn.Clicked(ev)
     run_stage("Upscale and Interpolate", "Stages.resolve_upscale_interpolate", args)
 end
 
+function win.On.UpdateBtn.Clicked(ev)
+    run_update(false)
+end
+
 win:Show()
 if REPO_ROOT == "" then
     set_status("Warning: no config found. Run installer script.")
 else
     set_status("Ready. Repo: " .. REPO_ROOT)
+    if AUTO_UPDATE then
+        run_update(true)
+    end
 end
 disp:RunLoop()
