@@ -19,10 +19,9 @@ Option A — Installer (terminal):
 2. Restart Resolve.
 3. Open: `Workspace → Scripts → Eternal2x`
 
-Option B — Drag & Drop (no terminal):
-1. Build the drag‑and‑drop package:
-   - `./.venv/bin/python Installer/build_dragdrop.py`
-2. Copy the generated folder `dist/Eternal2x` into Resolve’s Scripts/Comp folder.
+Option B — Drag & Drop:
+1. Download the prebuilt `Eternal2x` drag‑and‑drop folder from the release zip.
+2. Copy `Eternal2x` into Resolve’s Scripts/Comp folder.
 3. Restart Resolve.
 4. Open: `Workspace → Scripts → Eternal2x`
 
