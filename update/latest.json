@@ -1,11 +1,11 @@
 {
-  "version": "0.1.0",
+  "version": "0.1.1",
   "windows": {
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/Alitleis123/DaVinchi-Resolve-Smart-Upscale-Plugin/releases/download/v0.1.1/eternal2x-win.zip",
+    "sha256": "REPLACE_WITH_WINDOWS_SHA256"
   },
   "macos": {
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/Alitleis123/DaVinchi-Resolve-Smart-Upscale-Plugin/releases/download/v0.1.1/eternal2x-mac.zip",
+    "sha256": "REPLACE_WITH_MAC_SHA256"
   }
 }
