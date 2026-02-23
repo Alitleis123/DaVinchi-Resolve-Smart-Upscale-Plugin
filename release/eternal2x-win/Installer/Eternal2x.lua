@@ -47,6 +47,15 @@ local function parse_bool(value, default_value)
     return default_value
 end
 
+local function short_path(path, max_len)
+    if not path then return "" end
+    local limit = max_len or 56
+    if #path <= limit then
+        return path
+    end
+    return "..." .. path:sub(#path - limit + 4)
+end
+
 local function shell_quote(s)
     if not s then return "" end
     if package.config:sub(1, 1) == "\\" then
@@ -123,63 +132,86 @@ local AUTO_UPDATE = parse_bool(conf["auto_update"], true)
 local win = disp:AddWindow({
     ID = "Eternal2x",
     WindowTitle = "Eternal2x",
-    Geometry = {100, 100, 380, 320},
+    Geometry = {100, 100, 430, 420},
     StyleSheet = [[
         QWidget {
-            background-color: #101722;
-            color: #eaf2ff;
+            background-color: #0d131c;
+            color: #e6eefb;
             font-size: 12px;
         }
         QLabel#Title {
-            font-size: 16px;
+            font-size: 18px;
             font-weight: 700;
-            color: #f4fbff;
-            padding-bottom: 2px;
+            color: #f7fbff;
         }
         QLabel#SubTitle {
-            color: #8fb2d6;
-            padding-bottom: 8px;
+            color: #9fb7d4;
+            padding-bottom: 4px;
+        }
+        QLabel#Section {
+            color: #b9cbe3;
+            font-size: 11px;
+            font-weight: 700;
+            padding-top: 6px;
+            padding-bottom: 2px;
+            letter-spacing: 0.3px;
+        }
+        QLabel#Meta {
+            color: #8fa8c5;
+            background-color: #101a28;
+            border: 1px solid #2f455f;
+            border-radius: 6px;
+            padding: 6px;
         }
         QPushButton {
-            background-color: #1f334d;
-            border: 1px solid #4b78ab;
+            background-color: #20354f;
+            border: 1px solid #4b78aa;
             border-radius: 7px;
             min-height: 30px;
-            padding: 6px 8px;
+            padding: 6px 10px;
             font-weight: 600;
         }
-        QPushButton:hover { background-color: #29456b; }
-        QPushButton:pressed { background-color: #1a2f4d; }
+        QPushButton:hover { background-color: #2b4a73; }
+        QPushButton:pressed { background-color: #1b304b; }
         QSlider::groove:horizontal {
             height: 6px;
             border-radius: 3px;
-            background: #2a3c55;
+            background: #2b3f59;
         }
         QSlider::handle:horizontal {
             width: 14px;
-            background: #ff8a3d;
-            border: 1px solid #ffb17a;
+            background: #ff9a4d;
+            border: 1px solid #ffbf8f;
             border-radius: 7px;
             margin: -5px 0;
         }
         QLabel#Status {
-            background-color: #0b111a;
-            border: 1px solid #334a68;
+            background-color: #101a28;
+            border: 1px solid #2f455f;
             border-radius: 6px;
-            padding: 7px;
-            color: #b7cae2;
+            padding: 8px;
+            color: #bcd0e8;
         }
     ]]
 }, ui:VGroup{
     ui:Label{ID="Title", Text="Eternal2x", ObjectName="Title"},
     ui:Label{ID="SubTitle", Text="DaVinci Resolve Smart Upscale", ObjectName="SubTitle"},
-    ui:Button{ID="DetectBtn", Text="Detect"},
-    ui:Button{ID="CutFrameBtn", Text="Sequence"},
-    ui:Button{ID="RegroupBtn", Text="Regroup"},
-    ui:Button{ID="UpscaleBtn", Text="Upscale and Interpolate"},
+    ui:Label{ID="WorkflowSection", Text="WORKFLOW", ObjectName="Section"},
+    ui:HGroup{
+        ui:Button{ID="DetectBtn", Text="Detect"},
+        ui:Button{ID="CutFrameBtn", Text="Sequence"},
+    },
+    ui:HGroup{
+        ui:Button{ID="RegroupBtn", Text="Regroup"},
+        ui:Button{ID="UpscaleBtn", Text="Upscale + Interpolate"},
+    },
+    ui:Label{ID="UpdateSection", Text="UPDATES", ObjectName="Section"},
     ui:Button{ID="UpdateBtn", Text="Check for Updates"},
+    ui:Label{ID="SensitivitySection", Text="SENSITIVITY", ObjectName="Section"},
     ui:Label{ID="SensLabel", Text="Interpolate Sensitivity: 0.20"},
     ui:Slider{ID="SensSlider", Orientation="Horizontal", Minimum=0, Maximum=100, Value=20},
+    ui:Label{ID="Meta", Text="Repo: (not set)", ObjectName="Meta", WordWrap=true},
+    ui:Label{ID="StatusSection", Text="STATUS", ObjectName="Section"},
     ui:Label{ID="Status", Text="Ready.", ObjectName="Status", WordWrap=true},
 })
 
@@ -303,9 +335,15 @@ end
 
 win:Show()
 if REPO_ROOT == "" then
+    if items and items.Meta then
+        items.Meta.Text = "Repo: not configured"
+    end
     set_status("Warning: no config found. Run installer script.")
 else
-    set_status("Ready. Repo: " .. REPO_ROOT)
+    if items and items.Meta then
+        items.Meta.Text = "Repo: " .. short_path(REPO_ROOT, 62)
+    end
+    set_status("Ready.")
     if AUTO_UPDATE then
         run_update(true)
     end
