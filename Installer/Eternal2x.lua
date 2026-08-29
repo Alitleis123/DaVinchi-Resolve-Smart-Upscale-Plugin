@@ -123,12 +123,15 @@ local ui = fu.UIManager
 local disp = bmd.UIDispatcher(ui)
 
 local root = trim_trailing_sep(script_dir() or "")
-local conf = read_conf((root ~= "" and (root .. "/") or "") .. "Eternal2x.conf")
-local REPO_ROOT = trim_trailing_sep(conf["repo_root"] or root or "")
+-- When launched through Eternal2xLauncher.lua the config sits in Resolve's
+-- Comp folder, not next to this file, so the launcher passes its path down.
+local CONF_PATH = _G.ETERNAL2X_CONF
+    or ((root ~= "" and (root .. "/") or "") .. "Eternal2x.conf")
+local conf = read_conf(CONF_PATH)
+local REPO_ROOT = trim_trailing_sep(conf["repo_root"] or _G.ETERNAL2X_ROOT or root or "")
 local PYTHON = conf["python"] or (is_windows() and "python" or "python3")
 local UPDATE_URL = conf["update_url"] or ""
 local AUTO_UPDATE = parse_bool(conf["auto_update"], true)
-local CONF_PATH = (root ~= "" and (root .. "/") or "") .. "Eternal2x.conf"
 
 local function save_conf()
     local f = io.open(CONF_PATH, "w")

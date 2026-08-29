@@ -23,7 +23,9 @@ def merge_close_segments(segments: List[Segment], merge_gap_frames: int) -> List
     if not segments:
         return []
 
-    merged = [segments[0]]
+    # Copy: the merge writes to `last.end`, which would otherwise reach back
+    # into the Segment objects the caller still holds.
+    merged = [Segment(segments[0].start, segments[0].end)]
 
     for seg in segments[1:]:
         last = merged[-1]
@@ -32,7 +34,7 @@ def merge_close_segments(segments: List[Segment], merge_gap_frames: int) -> List
         if gap <= merge_gap_frames:
             last.end = max(last.end, seg.end)
         else:
-            merged.append(seg)
+            merged.append(Segment(seg.start, seg.end))
 
     return merged
 

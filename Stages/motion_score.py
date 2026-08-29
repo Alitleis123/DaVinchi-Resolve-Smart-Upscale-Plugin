@@ -56,6 +56,9 @@ def score_detail(prev_gray: np.ndarray, curr_gray: np.ndarray, tile_grid) -> flo
 
     gx, gy = _parse_tile_grid(tile_grid)
     h, w = diff.shape[:2]
+    # Never ask for more tiles than there are pixels, or the trailing tiles are
+    # empty slices and their mean is NaN -- which silently suppresses detection.
+    gx, gy = max(1, min(gx, w)), max(1, min(gy, h))
     tw, th = max(1, w // gx), max(1, h // gy)
 
     vals = []
@@ -122,12 +125,17 @@ def compute_motion_scores(
 
         ret2, frame = cap.retrieve()
         if not ret2:
+            # The tail of the file could not be decoded. Repeat the last known
+            # score so the array still lines up one-to-one with source frames.
+            scores.extend([scores[-1]] * grabbed)
             break
 
         curr = _preprocess(frame, max_width=max_width)
 
-        raw = score_global(prev, curr) if mode == "global" else score_detail(prev, curr, tile_grid)
-        score = raw / grabbed
+        # Not divided by `grabbed`: the score is compared against a fixed
+        # sensitivity threshold, so it has to stay on the same scale whatever
+        # the sampling interval is.
+        score = score_global(prev, curr) if mode == "global" else score_detail(prev, curr, tile_grid)
         scores.extend([score] * grabbed)
 
         prev = curr
