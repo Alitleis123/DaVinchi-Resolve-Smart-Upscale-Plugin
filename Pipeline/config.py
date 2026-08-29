@@ -37,6 +37,11 @@ class Eternal2xConfig:
     # but never tears.
     occlusion_softness: float = 0.5
 
+    # How far the forward and backward warps may disagree before an in-between
+    # is held instead of generated. Raising it smooths faster motion at the
+    # risk of smearing; lowering it is more conservative.
+    max_disagreement: float = 0.02
+
     interpolate_enabled: bool = True
     upscale_enabled: bool = True
     upscale_factor: int = 2

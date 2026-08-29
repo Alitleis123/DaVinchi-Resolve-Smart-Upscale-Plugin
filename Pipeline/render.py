@@ -250,6 +250,7 @@ def render_plan(
                     prev, curr, times,
                     quality=cfg.quality,
                     occlusion_softness=cfg.occlusion_softness,
+                    max_disagreement=cfg.max_disagreement,
                 ):
                     frame = upscale(frame, factor) if factor > 1 else frame
                     if writer is None and not is_sequence:
