@@ -86,12 +86,33 @@ def test_the_rendered_file_lands_where_it_says(anime_in_resolve, monkeypatch, ca
                                                tmp_path):
     anime_in_resolve()
     out_dir = tmp_path / "out"
-    run(monkeypatch, ["--output-dir", str(out_dir)])
+    run(monkeypatch, ["--format", "mp4", "--output-dir", str(out_dir)])
 
-    rendered = list(out_dir.glob("*.avi"))
+    rendered = list(out_dir.glob("*.mp4"))
     assert len(rendered) == 1
     assert rendered[0].stat().st_size > 0
     assert rendered[0].name in capsys.readouterr().out
+
+
+def test_the_default_output_is_a_lossless_sequence(anime_in_resolve, monkeypatch,
+                                                   tmp_path):
+    """Quality is the point of the tool, so the default must not be lossy."""
+    anime_in_resolve()
+    out_dir = tmp_path / "out"
+    run(monkeypatch, ["--output-dir", str(out_dir)])
+
+    folders = [p for p in out_dir.iterdir() if p.is_dir()]
+    assert len(folders) == 1
+    assert len(list(folders[0].glob("*.png"))) == 24
+
+
+@pytest.mark.parametrize("fmt,pattern", [("mp4", "*.mp4"), ("avi", "*.avi")])
+def test_single_file_formats_render(anime_in_resolve, monkeypatch, tmp_path, fmt, pattern):
+    anime_in_resolve()
+    out_dir = tmp_path / fmt
+    assert run(monkeypatch, ["--format", fmt, "--output-dir", str(out_dir)]) == 0
+    written = list(out_dir.glob(pattern))
+    assert len(written) == 1 and written[0].stat().st_size > 0
 
 
 def test_super_scale_is_applied_to_the_imported_clip(anime_in_resolve, monkeypatch,
@@ -119,14 +140,15 @@ def test_free_edition_skips_the_upscale_and_says_why(anime_in_resolve, monkeypat
     assert "needs DaVinci Resolve Studio" in capsys.readouterr().out
 
 
-def test_sequence_output(anime_in_resolve, monkeypatch, tmp_path):
+def test_sequence_frames_are_readable_images(anime_in_resolve, monkeypatch, tmp_path):
+    import cv2
     anime_in_resolve()
     out_dir = tmp_path / "out"
-    run(monkeypatch, ["--sequence", "--output-dir", str(out_dir)])
+    run(monkeypatch, ["--format", "png", "--output-dir", str(out_dir)])
 
-    folders = [p for p in out_dir.iterdir() if p.is_dir()]
-    assert len(folders) == 1
-    assert len(list(folders[0].glob("*.png"))) == 24
+    folder = [p for p in out_dir.iterdir() if p.is_dir()][0]
+    first = cv2.imread(str(sorted(folder.glob("*.png"))[0]))
+    assert first is not None and first.shape[:2] == (120, 200)
 
 
 def test_a_failed_import_still_points_at_the_render(anime_in_resolve, monkeypatch,
@@ -205,9 +227,14 @@ def test_repeat_runs_do_not_overwrite_the_previous_render(make_anime, monkeypatc
                                                           tmp_path):
     src = make_anime(holds=(2,) * 6)
     out_dir = tmp_path / "o"
-    run(monkeypatch, ["--video", str(src), "--output-dir", str(out_dir)])
-    run(monkeypatch, ["--video", str(src), "--output-dir", str(out_dir)])
-    assert len(list(out_dir.glob("*.avi"))) == 2, "the second run overwrote the first"
+    for _ in range(2):
+        run(monkeypatch, ["--video", str(src), "--output-dir", str(out_dir)])
+    folders = [p for p in out_dir.iterdir() if p.is_dir()]
+    assert len(folders) == 2, "the second run overwrote the first"
+
+    run(monkeypatch, ["--video", str(src), "--format", "mp4", "--output-dir", str(out_dir)])
+    run(monkeypatch, ["--video", str(src), "--format", "mp4", "--output-dir", str(out_dir)])
+    assert len(list(out_dir.glob("*.mp4"))) == 2, "a repeat mp4 run overwrote the first"
 
 
 # --------------------------------------------------------------------------

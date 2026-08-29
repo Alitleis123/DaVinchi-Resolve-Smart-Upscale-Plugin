@@ -174,13 +174,24 @@ def _iter_plan_frames(cap: cv2.VideoCapture, indices: Sequence[int]) -> Iterator
         yield current
 
 
+# Encoders to try per container, best quality first.
+_ENCODERS = {
+    ".avi": ("FFV1", "MJPG"),      # FFV1 is lossless
+    ".mp4": ("avc1", "mp4v"),      # H.264, which Resolve always reads
+    ".mov": ("mp4v", "jpeg"),
+}
+
+
 def _writer(path: Path, size: Tuple[int, int], fps: float) -> cv2.VideoWriter:
     w, h = size
-    for fourcc in ("FFV1", "MJPG", "mp4v"):
+    for fourcc in _ENCODERS.get(path.suffix.lower(), ("MJPG", "mp4v")):
         writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*fourcc), fps, (w, h))
         if writer.isOpened():
             return writer
-    raise SourceError(f"No usable video encoder for {path}")
+    raise SourceError(
+        f"No encoder available for {path.suffix or 'this format'}. "
+        "Try the lossless image sequence output instead."
+    )
 
 
 def render_plan(

@@ -81,22 +81,28 @@ def _progress_printer(status: "StatusFile"):
     return report
 
 
-def _output_path(source: Path, output_dir: Optional[str], sequence: bool) -> Path:
+# png    lossless image sequence; always readable by Resolve, many files
+# mp4    H.264; compact and universally readable, but lossy
+# avi    FFV1; lossless single file, though Resolve may not import it
+FORMATS = {"png": "", "mp4": ".mp4", "avi": ".avi"}
+
+
+def _output_path(source: Path, output_dir: Optional[str], fmt: str) -> Path:
     base = Path(output_dir) if output_dir else source.parent / "Eternal2x"
     base.mkdir(parents=True, exist_ok=True)
+    suffix = FORMATS.get(fmt, "")
     stem = f"{source.stem}_smooth"
-    if sequence:
-        target = base / stem
-        n = 1
-        while target.exists() and any(target.iterdir()):
-            n += 1
-            target = base / f"{stem}_{n:02d}"
-        return target
-    target = base / f"{stem}.avi"
+
+    def taken(path: Path) -> bool:
+        if not path.exists():
+            return False
+        return any(path.iterdir()) if path.is_dir() else True
+
+    target = base / f"{stem}{suffix}"
     n = 1
-    while target.exists():
+    while taken(target):
         n += 1
-        target = base / f"{stem}_{n:02d}.avi"
+        target = base / f"{stem}_{n:02d}{suffix}"
     return target
 
 
@@ -111,8 +117,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", default=None,
                         help="Where to write the result (default: an Eternal2x "
                              "folder beside the source).")
-    parser.add_argument("--sequence", action="store_true",
-                        help="Write a lossless PNG sequence instead of a video file.")
+    parser.add_argument("--format", default="png", choices=sorted(FORMATS),
+                        help="png: lossless image sequence (default). "
+                             "mp4: compact H.264 file. "
+                             "avi: lossless FFV1 file.")
     parser.add_argument("--threshold", type=float, default=None,
                         help="Duplicate-detection threshold override.")
     parser.add_argument("--base-hold", type=int, default=0,
@@ -206,7 +214,7 @@ def main() -> int:
             print(json.dumps(summary))
         return 0
 
-    output = _output_path(source, args.output_dir, args.sequence)
+    output = _output_path(source, args.output_dir, args.format)
     print(f"Rendering to: {output}")
     try:
         result = render_plan(source, plan, output, cfg, progress=progress)

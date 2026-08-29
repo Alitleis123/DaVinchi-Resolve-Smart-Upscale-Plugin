@@ -85,7 +85,7 @@ def test_every_control_is_present(lua, direct):
     H = load(lua, ui_script(direct))
     ids = set(H.widget_ids().split(","))
     for expected in ("SmoothBtn", "AnalyseBtn", "RefreshBtn", "RefreshStatusBtn",
-                     "CancelBtn", "UpdateBtn", "QualityCombo", "HoldCombo",
+                     "CancelBtn", "UpdateBtn", "QualityCombo", "HoldCombo", "FormatCombo",
                      "UpscaleCB", "InterpCB", "AutoUpdateCB", "Status",
                      "Progress", "SourceLabel", "AnalysisLabel"):
         assert expected in ids, f"missing {expected}; have {sorted(ids)}"
@@ -113,6 +113,33 @@ def test_quality_choices_match_what_the_stage_accepts(lua, direct):
             accepted = set(action.choices)
     assert accepted is not None
     assert set(labels) == accepted, f"panel offers {labels}, stage accepts {accepted}"
+
+
+def test_output_format_choices_match_the_stage(lua, direct):
+    from Stages.resolve_smooth import build_parser
+    H = load(lua, ui_script(direct))
+    assert H.combo_items("FormatCombo").count(",") == 2
+
+    accepted = None
+    for action in build_parser()._actions:
+        if "--format" in action.option_strings:
+            accepted = set(action.choices)
+    H.click("AnalyseBtn")
+    chosen = H.last_command().split("--format ")[1].split()[0]
+    assert chosen in accepted
+
+
+def test_the_default_output_format_is_lossless(lua, direct):
+    H = load(lua, ui_script(direct))
+    H.click("AnalyseBtn")
+    assert "--format png" in H.last_command()
+
+
+def test_output_format_selection_reaches_the_command(lua, direct):
+    H = load(lua, ui_script(direct))
+    H.set_combo("FormatCombo", 1)      # MP4
+    H.click("AnalyseBtn")
+    assert "--format mp4" in H.last_command()
 
 
 def test_hold_pattern_choices_are_offered(lua, direct):

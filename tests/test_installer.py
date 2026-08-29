@@ -172,3 +172,64 @@ def test_the_launcher_hands_its_config_down_to_the_ui_script(fake_home, monkeypa
 
     assert "ETERNAL2X_CONF" in launcher, "launcher does not pass the config path down"
     assert "ETERNAL2X_CONF" in ui, "UI script does not read the passed-in config path"
+
+
+# --------------------------------------------------------------------------
+# both installers must agree
+# --------------------------------------------------------------------------
+
+def test_config_contains_every_key_the_panel_reads(tmp_path, repo_root):
+    """Any key the Lua panel reads has to be written by the installer."""
+    import re
+
+    conf = read_conf(inst.write_config(tmp_path, Path("/plugin"), "/usr/bin/python3"))
+    lua = (repo_root / "Installer" / "Eternal2x.lua").read_text(encoding="utf-8")
+    read_keys = set(re.findall(r'conf\["(\w+)"\]', lua))
+
+    missing = read_keys - set(conf)
+    assert not missing, f"the panel reads {missing}, which the installer never writes"
+
+
+def test_the_panel_saves_back_every_key_the_installer_writes(repo_root, tmp_path):
+    """Saving a setting must not drop keys the installer put there."""
+    conf = read_conf(inst.write_config(tmp_path, Path("/plugin"), "/usr/bin/python3"))
+    lua = (repo_root / "Installer" / "Eternal2x.lua").read_text(encoding="utf-8")
+    save_block = lua[lua.index("local function save_conf"):lua.index("local function read_version")]
+
+    for key in conf:
+        assert f'"{key}=' in save_block, (
+            f"save_conf does not write {key}, so it would be lost on the next save"
+        )
+
+
+def test_the_gui_installer_writes_the_same_config(tmp_path, monkeypatch):
+    """Two installers, one config format."""
+    monkeypatch.setattr(sys, "platform", "darwin")
+    import importlib
+    gui = importlib.import_module("Installer.gui_installer")
+
+    cli_conf = inst.write_config(tmp_path / "a", Path("/plugin"), "/usr/bin/python3") \
+        if (tmp_path / "a").mkdir() or True else None
+    gui_dir = tmp_path / "b"
+    gui_dir.mkdir()
+    gui_conf = gui.write_config(gui_dir, Path("/plugin"), "/usr/bin/python3")
+
+    assert read_conf(cli_conf) == read_conf(gui_conf)
+
+
+def test_config_has_no_byte_order_mark(tmp_path):
+    conf = inst.write_config(tmp_path, Path("/plugin"), "/usr/bin/python3")
+    assert conf.read_bytes()[:3] != b"\xef\xbb\xbf"
+
+
+def test_panel_defaults_are_values_the_stage_accepts(tmp_path):
+    from Stages.resolve_smooth import FORMATS, build_parser
+
+    conf = read_conf(inst.write_config(tmp_path, Path("/plugin"), "/usr/bin/python3"))
+    assert conf["format"] in FORMATS
+
+    quality_choices = None
+    for action in build_parser()._actions:
+        if "--quality" in action.option_strings:
+            quality_choices = set(action.choices)
+    assert conf["quality"] in quality_choices

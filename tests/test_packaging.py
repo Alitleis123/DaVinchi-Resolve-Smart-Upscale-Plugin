@@ -169,18 +169,33 @@ def test_declared_requirements_cover_what_the_code_imports(repo_root):
     assert not missing, f"requirements.txt is missing {missing}"
 
 
-def test_readme_documents_the_buttons_the_ui_actually_has(repo_root):
+def test_readme_documents_every_button_the_panel_has(repo_root):
+    """A control the user can see has to be explained somewhere."""
     lua = (repo_root / "Installer" / "Eternal2x.lua").read_text(encoding="utf-8")
+    readme = (repo_root / "README.md").read_text(encoding="utf-8").lower()
+
+    # Button text, with the leading icon bytes stripped.
+    for _bid, text in re.findall(r'ui:Button\{\s*ID\s*=\s*"(\w+)"\s*,\s*Text\s*=\s*"([^"]+)"', lua):
+        label = re.sub(r'\\x[0-9A-Fa-f]{2}', "", text).strip().lower()
+        if not label:
+            continue
+        assert label in readme, f"README never mentions the {label!r} button"
+
+
+def test_readme_documents_every_command_line_flag(repo_root):
+    """The README advertises the CLI, so its flags must be real."""
+    from Stages.resolve_smooth import build_parser
+
     readme = (repo_root / "README.md").read_text(encoding="utf-8")
-    button_ids = set(re.findall(r'ui:Button\{ID="(\w+)"', lua))
-    labels = {
-        "DetectBtn": "Detect",
-        "CutFrameBtn": "Sequence",
-        "RegroupBtn": "Regroup",
-        "UpscaleBtn": "Upscale",
-        "UpdateBtn": "Check for Updates",
-    }
-    for bid in button_ids:
-        label = labels.get(bid)
-        if label:
-            assert label in readme, f"README does not mention the {label} button"
+    known = {opt for action in build_parser()._actions for opt in action.option_strings}
+
+    for flag in set(re.findall(r"(--[a-z][a-z-]+)", readme)):
+        if flag in {"--help"}:
+            continue
+        assert flag in known, f"README documents {flag}, which the stage does not accept"
+
+
+def test_readme_states_the_studio_requirement(repo_root):
+    """Super Scale and Optical Flow are Studio-only, so this cannot be vague."""
+    readme = (repo_root / "README.md").read_text(encoding="utf-8")
+    assert "Resolve Studio" in readme

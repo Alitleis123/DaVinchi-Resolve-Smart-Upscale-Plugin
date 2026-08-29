@@ -83,6 +83,7 @@ local QUALITY = conf["quality"] or "better"
 local DO_UPSCALE = parse_bool(conf["upscale"], true)
 local DO_INTERPOLATE = parse_bool(conf["interpolate"], true)
 local BASE_HOLD = tonumber(conf["base_hold"] or "0") or 0
+local FORMAT = conf["format"] or "png"
 
 local STATUS_PATH = join_path(REPO_ROOT ~= "" and REPO_ROOT or root, ".eternal2x_status.json")
 local LOG_PATH = join_path(REPO_ROOT ~= "" and REPO_ROOT or root, ".eternal2x_last_run.log")
@@ -99,6 +100,7 @@ local function save_conf()
     f:write("upscale=" .. (DO_UPSCALE and "true" or "false") .. "\n")
     f:write("interpolate=" .. (DO_INTERPOLATE and "true" or "false") .. "\n")
     f:write("base_hold=" .. tostring(BASE_HOLD) .. "\n")
+    f:write("format=" .. FORMAT .. "\n")
     f:close()
 end
 
@@ -227,6 +229,8 @@ local QUALITIES = { "fast", "better", "best" }
 local QUALITY_LABELS = { "Fast", "Better", "Best" }
 local HOLDS = { 0, 1, 2, 3 }
 local HOLD_LABELS = { "Auto detect", "On 1s", "On 2s", "On 3s" }
+local FORMATS = { "png", "mp4", "avi" }
+local FORMAT_LABELS = { "Image sequence (lossless)", "MP4 (compact)", "AVI (lossless)" }
 
 local function index_of(list, value)
     for i, v in ipairs(list) do
@@ -238,7 +242,7 @@ end
 local win = disp:AddWindow({
     ID = "Eternal2x",
     WindowTitle = "Eternal2x  v" .. CURRENT_VERSION,
-    Geometry = { 100, 100, 460, 620 },
+    Geometry = { 100, 100, 460, 660 },
     StyleSheet = [[
         QWidget { background-color: #0b0b0f; color: #e2e2ea; font-size: 12px; }
         QLabel#Title { font-size: 22px; font-weight: 700; color: #ededf4; padding-top: 2px; }
@@ -317,6 +321,10 @@ local win = disp:AddWindow({
         ui:ComboBox{ ID = "HoldCombo", Weight = 0.6 },
     },
     ui:HGroup{ Spacing = 6,
+        ui:Label{ Text = "Output", Weight = 0.4 },
+        ui:ComboBox{ ID = "FormatCombo", Weight = 0.6 },
+    },
+    ui:HGroup{ Spacing = 6,
         ui:CheckBox{ ID = "UpscaleCB", Text = "Upscale 2x", Checked = DO_UPSCALE },
         ui:CheckBox{ ID = "InterpCB", Text = "Interpolate", Checked = DO_INTERPOLATE },
     },
@@ -341,8 +349,10 @@ local items = win:GetItems()
 
 for _, label in ipairs(QUALITY_LABELS) do items.QualityCombo:AddItem(label) end
 for _, label in ipairs(HOLD_LABELS) do items.HoldCombo:AddItem(label) end
+for _, label in ipairs(FORMAT_LABELS) do items.FormatCombo:AddItem(label) end
 items.QualityCombo.CurrentIndex = index_of(QUALITIES, QUALITY)
 items.HoldCombo.CurrentIndex = index_of(HOLDS, BASE_HOLD)
+items.FormatCombo.CurrentIndex = index_of(FORMATS, FORMAT)
 
 -- ---------------------------------------------------------------------------
 -- state
@@ -398,6 +408,8 @@ local function current_args(extra)
     if hold and hold > 0 then
         args = args .. " --base-hold " .. tostring(hold)
     end
+    local fmt = FORMATS[(items.FormatCombo.CurrentIndex or 0) + 1] or "png"
+    args = args .. " --format " .. fmt
     if not items.UpscaleCB.Checked then args = args .. " --no-upscale" end
     if not items.InterpCB.Checked then args = args .. " --no-interpolate" end
     if OUTPUT_DIR ~= "" then args = args .. " --output-dir " .. shell_quote(OUTPUT_DIR) end
@@ -528,6 +540,11 @@ end
 
 function win.On.HoldCombo.CurrentIndexChanged(ev)
     BASE_HOLD = HOLDS[(items.HoldCombo.CurrentIndex or 0) + 1] or 0
+    save_conf()
+end
+
+function win.On.FormatCombo.CurrentIndexChanged(ev)
+    FORMAT = FORMATS[(items.FormatCombo.CurrentIndex or 0) + 1] or "png"
     save_conf()
 end
 

@@ -41,21 +41,26 @@ install → launch → click chain is covered end to end.
 
 ## Videos
 
-`make_video` (in `conftest.py`) writes lossless clips where the exact set of
-moving frames is known, so motion scores can be asserted frame by frame rather
-than eyeballed.
+`make_anime` (in `conftest.py`) writes lossless clips that behave like
+hand-drawn animation: a texture translated a little further per drawing, with
+each drawing held for a chosen number of frames. Because the exact timing is
+known, the rebuilt output can be checked frame by frame rather than eyeballed.
+`make_video` does the same for arbitrary per-frame motion.
+
+The texture matters. Optical flow needs something to track, and a flat shape on
+a flat background gives it nothing, so a synthetic test built that way measures
+the fallback path rather than the engine.
 
 ## Layout
 
 | File | Covers |
 |------|--------|
-| `test_frame_detect.py` | segment thresholding, merging, filtering, CLI |
-| `test_motion_score.py` | tile parsing, scorers, video → scores → segments |
-| `test_resolve_detect_markers.py` | Detect: marker placement, re-runs, frame mapping |
-| `test_resolve_cut_and_sequence.py` | Sequence: cutting at markers, 1-frame segments |
-| `test_resolve_regroup.py` | Regroup: gap closing, marker shifting |
-| `test_resolve_upscale_interpolate.py` | Upscale: 2x, interpolation gating |
+| `test_dedupe.py` | held-frame detection, hold patterns, rebuild planning |
+| `test_interpolate.py` | optical flow in-betweens, stills, cuts, occlusion |
+| `test_render.py` | video in, smooth video out, at every output format |
+| `test_resolve_bridge.py` | connecting, importing, appending, Super Scale, probing |
+| `test_resolve_smooth.py` | the stage the buttons run, end to end |
 | `test_resolve_update.py` | auto-update over a real local HTTP server |
-| `test_installer.py` | install locations, config contents, launcher wiring |
-| `test_lua_ui.py` | the Lua panel, button handlers, command construction |
-| `test_packaging.py` | release parity, update metadata, file encodings |
+| `test_installer.py` | install locations, config contract, installer parity |
+| `test_lua_ui.py` | the panel: handlers, commands, progress, persistence |
+| `test_packaging.py` | release parity, update metadata, encodings, docs |
