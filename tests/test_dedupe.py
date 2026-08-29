@@ -1,0 +1,236 @@
+"""Duplicate-frame detection and rebuild planning."""
+
+from __future__ import annotations
+
+import pytest
+
+from Pipeline.dedupe import (
+    DedupePlan,
+    Hold,
+    build_output_indices,
+    detect_base_hold,
+    flag_new_drawings,
+    holds_from_flags,
+    output_time_map,
+    plan_from_scores,
+)
+
+T = 0.004  # duplicate threshold
+
+
+def scores_for(holds):
+    """Difference scores for a clip whose drawings are held for `holds` frames."""
+    out = [0.0]
+    for i, hold in enumerate(holds):
+        if i:
+            out.append(0.5)          # a new drawing
+        out.extend([0.0] * (hold - 1))  # held frames are identical
+    return out
+
+
+# --------------------------------------------------------------------------
+# flagging
+# --------------------------------------------------------------------------
+
+def test_first_frame_is_always_a_new_drawing():
+    assert flag_new_drawings([0.0, 0.0], T)[0] is True
+
+
+def test_empty_scores():
+    assert flag_new_drawings([], T) == []
+
+
+def test_identical_frames_are_not_new_drawings():
+    assert flag_new_drawings([0.0, 0.0, 0.0], T) == [True, False, False]
+
+
+def test_threshold_is_inclusive():
+    assert flag_new_drawings([0.0, T], T) == [True, True]
+
+
+def test_noise_below_threshold_is_still_a_duplicate():
+    """Codec noise must not be mistaken for a new drawing."""
+    assert flag_new_drawings([0.0, 0.0009, 0.0012], T) == [True, False, False]
+
+
+# --------------------------------------------------------------------------
+# holds
+# --------------------------------------------------------------------------
+
+def test_holds_from_all_new_frames():
+    holds = holds_from_flags([True] * 4)
+    assert [(h.index, h.length) for h in holds] == [(0, 1), (1, 1), (2, 1), (3, 1)]
+
+
+def test_holds_on_twos():
+    holds = holds_from_flags([True, False, True, False, True, False])
+    assert [(h.index, h.length) for h in holds] == [(0, 2), (2, 2), (4, 2)]
+
+
+def test_hold_end_is_inclusive():
+    assert Hold(index=4, length=3).end == 6
+
+
+def test_holds_from_empty():
+    assert holds_from_flags([]) == []
+
+
+# --------------------------------------------------------------------------
+# base hold detection
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("holds,expected", [
+    ([1] * 10, 1),
+    ([2] * 10, 2),
+    ([3] * 10, 3),
+    ([2, 2, 2, 3, 2, 2], 2),
+    ([2, 2, 3, 3, 2, 3, 2], 2),
+])
+def test_detect_base_hold(holds, expected):
+    assert detect_base_hold([Hold(0, h) for h in holds]) == expected
+
+
+def test_long_stills_do_not_skew_the_base():
+    """A held pose is not the animation pattern."""
+    holds = [Hold(0, 2)] * 8 + [Hold(0, 40), Hold(0, 36)]
+    assert detect_base_hold(holds) == 2
+
+
+def test_ties_resolve_to_the_shorter_pattern():
+    """Guessing short de-duplicates less, which is the safer error."""
+    assert detect_base_hold([Hold(0, 2), Hold(0, 3)]) == 2
+
+
+def test_base_hold_of_nothing_is_one():
+    assert detect_base_hold([]) == 1
+
+
+# --------------------------------------------------------------------------
+# output planning
+# --------------------------------------------------------------------------
+
+def test_on_twos_halves_the_frame_count():
+    holds = [Hold(i * 2, 2) for i in range(6)]
+    assert build_output_indices(holds, 2) == [0, 2, 4, 6, 8, 10]
+
+
+def test_long_holds_keep_their_proportional_length():
+    """A drawing held six frames on a 2s clip stays a still, not motion."""
+    holds = [Hold(0, 2), Hold(2, 6), Hold(8, 2)]
+    assert build_output_indices(holds, 2) == [0, 2, 2, 2, 8]
+
+
+def test_every_drawing_appears_at_least_once():
+    """A 1-frame drawing in a 3s clip must not be dropped entirely."""
+    holds = [Hold(0, 3), Hold(3, 1), Hold(4, 3)]
+    assert build_output_indices(holds, 3) == [0, 3, 4]
+
+
+def test_base_hold_of_one_changes_nothing():
+    holds = [Hold(i, 1) for i in range(5)]
+    assert build_output_indices(holds, 1) == [0, 1, 2, 3, 4]
+
+
+# --------------------------------------------------------------------------
+# whole plan
+# --------------------------------------------------------------------------
+
+def test_plan_for_a_clip_on_twos():
+    plan = plan_from_scores(scores_for([2] * 12), 24.0, threshold=T)
+    assert plan.source_frames == 24
+    assert plan.unique_drawings == 12
+    assert plan.duplicate_frames == 12
+    assert plan.base_hold == 2
+    assert plan.output_frames == 12
+    assert plan.stretch == pytest.approx(2.0)
+    assert not plan.is_noop
+
+
+def test_plan_for_a_clip_on_threes():
+    plan = plan_from_scores(scores_for([3] * 8), 24.0, threshold=T)
+    assert plan.base_hold == 3
+    assert plan.unique_drawings == 8
+    assert plan.stretch == pytest.approx(3.0)
+
+
+def test_live_action_is_a_noop():
+    """Every frame unique: there is nothing to recover, so do nothing."""
+    plan = plan_from_scores([0.0] + [0.4] * 29, 24.0, threshold=T)
+    assert plan.base_hold == 1
+    assert plan.is_noop
+    assert plan.output_frames == plan.source_frames
+    assert "all unique" in plan.describe()
+
+
+def test_plan_on_an_empty_clip():
+    plan = plan_from_scores([], 24.0, threshold=T)
+    assert plan.source_frames == 0
+    assert plan.output_frames == 0
+    assert plan.describe() == "Empty clip."
+
+
+def test_forced_base_hold_overrides_detection():
+    plan = plan_from_scores(scores_for([2] * 12), 24.0, threshold=T, force_base_hold=3)
+    assert plan.base_hold == 3
+
+
+def test_plan_survives_mixed_timing():
+    plan = plan_from_scores(scores_for([2, 2, 3, 2, 8, 2, 2]), 24.0, threshold=T)
+    assert plan.base_hold == 2
+    assert plan.unique_drawings == 7
+    # 8-frame hold -> 4 frames, 3-frame hold -> 2, the five 2-frame holds -> 1 each
+    assert plan.output_frames == 11
+
+
+def test_plan_serialises():
+    plan = plan_from_scores(scores_for([2] * 4), 24.0, threshold=T)
+    d = plan.to_dict()
+    assert d["base_hold"] == 2
+    assert d["unique_drawings"] == 4
+    assert len(d["output_indices"]) == d["output_frames"]
+
+
+def test_describe_reports_the_pattern():
+    plan = plan_from_scores(scores_for([2] * 12), 24.0, threshold=T)
+    text = plan.describe()
+    assert "12 unique drawings" in text
+    assert "on 2s" in text
+
+
+# --------------------------------------------------------------------------
+# time mapping
+# --------------------------------------------------------------------------
+
+def test_time_map_has_one_entry_per_output_frame():
+    plan = plan_from_scores(scores_for([2] * 12), 24.0, threshold=T)
+    assert len(output_time_map(plan)) == plan.source_frames
+
+
+def test_time_map_spans_the_whole_intermediate():
+    plan = plan_from_scores(scores_for([2] * 12), 24.0, threshold=T)
+    positions = output_time_map(plan)
+    assert positions[0] == 0.0
+    assert positions[-1] == pytest.approx(plan.output_frames - 1)
+
+
+def test_time_map_is_monotonic():
+    plan = plan_from_scores(scores_for([2, 3, 2, 6, 2]), 24.0, threshold=T)
+    positions = output_time_map(plan)
+    assert positions == sorted(positions)
+
+
+def test_time_map_lands_on_real_drawings_for_a_clean_pattern():
+    """On a perfect 2s clip every other output frame is an original drawing."""
+    plan = plan_from_scores(scores_for([2] * 12), 24.0, threshold=T)
+    positions = output_time_map(plan)
+    originals = [p for p in positions if abs(p - round(p)) < 1e-6]
+    assert len(originals) >= plan.output_frames - 1
+
+
+def test_time_map_of_a_single_frame():
+    plan = DedupePlan(source_frames=1, fps=24.0, output_indices=[0])
+    assert output_time_map(plan) == [0.0]
+
+
+def test_time_map_of_an_empty_plan():
+    assert output_time_map(DedupePlan(source_frames=0, fps=24.0)) == []

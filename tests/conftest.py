@@ -101,3 +101,62 @@ def make_video(tmp_path):
         return _write_video(tmp_path / name, frames, fps=fps)
 
     return _make
+
+
+@pytest.fixture
+def make_anime(tmp_path):
+    """Build a clip that behaves like hand-drawn animation.
+
+    `holds` gives the number of source frames each successive drawing is held
+    for, so `[2] * 12` is twelve drawings on 2s. Each drawing is the same
+    texture translated a little further, which is what optical flow can
+    actually track -- a flat shape on a flat background gives it nothing to
+    lock onto.
+    """
+    import cv2
+
+    def _make(name="anime.avi", holds=(2,) * 12, fps=24.0, size=(200, 120),
+              step=6, texture_seed=1, cut_at=None):
+        w, h = size
+        rng = np.random.default_rng(texture_seed)
+        tex = cv2.GaussianBlur(rng.integers(0, 255, (h, w), dtype=np.uint8), (0, 0), 2.0)
+        # A genuinely different shot, not just different noise, so the cut
+        # detector sees it the way it would see a real scene change.
+        alt = cv2.GaussianBlur(rng.integers(200, 255, (h, w), dtype=np.uint8), (0, 0), 2.0)
+
+        frames = []
+        for drawing_index, hold in enumerate(holds):
+            base = alt if (cut_at is not None and drawing_index >= cut_at) else tex
+            offset = drawing_index * step
+            if cut_at is not None and drawing_index >= cut_at:
+                offset = (drawing_index - cut_at) * step
+            M = np.float32([[1, 0, offset], [0, 1, 0]])
+            drawing = cv2.warpAffine(np.dstack([base] * 3), M, (w, h),
+                                     borderMode=cv2.BORDER_REPLICATE)
+            frames.extend([drawing] * hold)
+
+        return _write_video(tmp_path / name, frames, fps=fps)
+
+    return _make
+
+
+@pytest.fixture
+def read_frames():
+    """Decode a rendered clip (or PNG sequence) back into a list of arrays."""
+    import cv2
+
+    def _read(path):
+        path = Path(path)
+        if path.is_dir():
+            return [cv2.imread(str(p)) for p in sorted(path.glob("*.png"))]
+        cap = cv2.VideoCapture(str(path))
+        out = []
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            out.append(frame)
+        cap.release()
+        return out
+
+    return _read
