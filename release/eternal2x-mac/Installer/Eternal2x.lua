@@ -170,8 +170,11 @@ local function build_command(module_name, args, background)
         return cd .. " && " .. run .. redirect
     end
     if is_windows() then
-        return cd .. " && start \"Eternal2x\" /B " .. run .. redirect
+        -- The redirection has to sit inside the spawned cmd, otherwise it
+        -- binds to `start` itself and the log stays empty.
+        return cd .. " && start \"Eternal2x\" /B cmd /c \"" .. run .. redirect .. "\""
     end
+    -- `A && B &` backgrounds the whole compound, which is what we want here.
     return cd .. " && " .. run .. redirect .. " &"
 end
 

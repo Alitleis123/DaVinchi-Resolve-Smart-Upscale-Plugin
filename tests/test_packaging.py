@@ -7,7 +7,6 @@ users because the release folder or update metadata was not regenerated.
 from __future__ import annotations
 
 import ast
-import hashlib
 import json
 import re
 from pathlib import Path

@@ -10,7 +10,6 @@ import pytest
 from Pipeline import resolve_bridge as bridge
 from tests.fake_resolve import (
     FakeBmdModule,
-    FakeMediaPool,
     FakeMediaPoolItem,
     FakeProject,
     FakeProjectManager,

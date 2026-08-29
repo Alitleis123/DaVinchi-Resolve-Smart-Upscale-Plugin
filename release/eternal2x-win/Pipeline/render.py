@@ -237,21 +237,22 @@ def render_plan(
         if prev is None:
             raise SourceError(f"Could not read frames from: {source}")
 
-        if plan.output_frames == 1:
-            pairs: List[Tuple[np.ndarray, Optional[np.ndarray]]] = [(prev, None)]
-        else:
-            pairs = []
-
         index = 0
         for curr in frames:
             times = buckets[index] if index < len(buckets) else []
             if times:
-                for frame in interpolate_pair(
-                    prev, curr, times,
-                    quality=cfg.quality,
-                    occlusion_softness=cfg.occlusion_softness,
-                    max_disagreement=cfg.max_disagreement,
-                ):
+                if cfg.interpolate_enabled:
+                    produced = interpolate_pair(
+                        prev, curr, times,
+                        quality=cfg.quality,
+                        occlusion_softness=cfg.occlusion_softness,
+                        max_disagreement=cfg.max_disagreement,
+                    )
+                else:
+                    # De-duplicate only: every output frame is a real drawing,
+                    # nothing is synthesised.
+                    produced = [(prev if t < 0.5 else curr).copy() for t in times]
+                for frame in produced:
                     frame = upscale(frame, factor) if factor > 1 else frame
                     if writer is None and not is_sequence:
                         out_h, out_w = frame.shape[:2]

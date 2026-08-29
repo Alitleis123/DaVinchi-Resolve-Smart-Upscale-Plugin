@@ -443,3 +443,34 @@ def test_auto_update_toggle_persists(lua, direct):
     H = load(lua, ui_script(direct))
     H.set_checkbox("AutoUpdateCB", True)
     assert "auto_update=true" in (direct / "Installer" / "Eternal2x.conf").read_text()
+
+
+# --------------------------------------------------------------------------
+# background launching
+# --------------------------------------------------------------------------
+
+def test_the_background_command_redirects_into_the_log(lua, direct):
+    H = load(lua, ui_script(direct))
+    H.click("SmoothBtn")
+    cmd = H.last_command()
+    assert ".eternal2x_last_run.log" in cmd
+    assert "2>&1" in cmd
+
+
+def test_the_windows_background_form_keeps_the_redirect_inside_cmd(repo_root):
+    """`start ... > log` binds the redirect to start, leaving the log empty."""
+    lua_src = (repo_root / "Installer" / "Eternal2x.lua").read_text(encoding="utf-8")
+    block = lua_src[lua_src.index("local function build_command"):
+                    lua_src.index("local function run_blocking")]
+    assert 'cmd /c' in block, (
+        "the Windows background launch must wrap the command in cmd /c so the "
+        "redirection applies to the child process"
+    )
+
+
+def test_a_background_run_does_not_block(lua, direct):
+    """The panel must not wait on the render, or Resolve freezes."""
+    H = load(lua, ui_script(direct))
+    H.click("SmoothBtn")
+    assert not H.enabled("SmoothBtn"), "the panel should show it is busy"
+    assert "Resolve stays usable" in H.status()

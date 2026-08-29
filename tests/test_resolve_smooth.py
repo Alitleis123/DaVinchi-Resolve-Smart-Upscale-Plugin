@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
-
 import pytest
 
 from Stages import resolve_smooth as smooth
@@ -282,3 +280,31 @@ def test_an_unwritable_status_path_does_not_break_the_render(make_anime, monkeyp
                              "--status-file", "/nonexistent-root/status.json",
                              "--output-dir", str(tmp_path / "o")]) == 0
     assert "Wrote 12 frames" in capsys.readouterr().out
+
+
+def test_the_no_interpolate_flag_changes_the_output(make_anime, monkeypatch, tmp_path):
+    """A switch the panel exposes has to actually do something."""
+    import cv2
+
+    def frames_of(folder):
+        path = list(folder.glob("*.avi"))[0]
+        cap, out = cv2.VideoCapture(str(path)), []
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            out.append(frame)
+        cap.release()
+        return out
+
+    src = make_anime(holds=(2,) * 8)
+    run(monkeypatch, ["--video", str(src), "--format", "avi",
+                      "--output-dir", str(tmp_path / "on")])
+    run(monkeypatch, ["--video", str(src), "--format", "avi", "--no-interpolate",
+                      "--output-dir", str(tmp_path / "off")])
+
+    on, off = frames_of(tmp_path / "on"), frames_of(tmp_path / "off")
+    assert len(on) == len(off)
+    assert any(not (a == b).all() for a, b in zip(on, off)), (
+        "--no-interpolate produced identical output, so the setting does nothing"
+    )

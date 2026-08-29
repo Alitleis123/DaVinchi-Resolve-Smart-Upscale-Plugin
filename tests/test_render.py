@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
 import pytest
 
@@ -246,3 +244,35 @@ def test_noop_footage_still_renders_the_right_length(make_anime, tmp_path, read_
     plan, _, _ = analyse_video(src, cfg())
     result = render_plan(src, plan, tmp_path / "out.avi", cfg())
     assert len(read_frames(result.output)) == 20
+
+
+def test_interpolation_can_be_turned_off(make_anime, tmp_path, read_frames):
+    """With interpolation off, every output frame must be a real drawing."""
+    src = make_anime(holds=(2,) * 10)
+    source_frames = read_frames(src)
+
+    c = cfg(interpolate_enabled=False)
+    plan, _w, _h = analyse_video(src, c)
+    result = render_plan(src, plan, tmp_path / "off.avi", c)
+
+    out = read_frames(result.output)
+    assert len(out) == plan.source_frames
+    originals = {i: f.tobytes() for i, f in enumerate(source_frames)}
+    for frame in out:
+        assert frame.tobytes() in originals.values(), (
+            "an output frame was synthesised even though interpolation was off"
+        )
+
+
+def test_turning_interpolation_off_changes_the_result(make_anime, tmp_path, read_frames):
+    src = make_anime(holds=(2,) * 10)
+    plan, _w, _h = analyse_video(src, cfg())
+
+    on = read_frames(render_plan(src, plan, tmp_path / "on.avi", cfg()).output)
+    off = read_frames(render_plan(src, plan, tmp_path / "off.avi",
+                                  cfg(interpolate_enabled=False)).output)
+
+    assert len(on) == len(off)
+    assert any(not np.array_equal(a, b) for a, b in zip(on, off)), (
+        "the interpolate setting made no difference to the output"
+    )
