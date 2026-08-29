@@ -1,0 +1,257 @@
+"""The stage the panel's buttons run, end to end against a fake Resolve."""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+from Stages import resolve_smooth as smooth
+
+
+def run(monkeypatch, argv):
+    monkeypatch.setattr(sys, "argv", ["resolve_smooth"] + list(argv))
+    return smooth.main()
+
+
+@pytest.fixture
+def anime_in_resolve(make_anime, install_fake_resolve, tmp_path):
+    """A Resolve session whose selected clip is a real file on disk."""
+    def _build(holds=(2,) * 12, **kwargs):
+        src = make_anime(holds=holds)
+        resolve, timeline, items, mpi = install_fake_resolve(
+            [(0, len(holds) * 2)], media_path=str(src), **kwargs
+        )
+        return src, resolve, timeline, items, mpi
+    return _build
+
+
+# --------------------------------------------------------------------------
+# analysis only
+# --------------------------------------------------------------------------
+
+def test_analyse_reports_the_pattern_without_changing_anything(anime_in_resolve,
+                                                               monkeypatch, capsys,
+                                                               tmp_path):
+    src, _r, timeline, _items, _ = anime_in_resolve()
+    before = len(timeline.GetItemListInTrack("video", 1))
+
+    assert run(monkeypatch, ["--analyse", "--output-dir", str(tmp_path / "out")]) == 0
+
+    out = capsys.readouterr().out
+    assert "12 unique drawings" in out
+    assert "on 2s" in out
+    assert "Nothing was changed" in out
+    assert len(timeline.GetItemListInTrack("video", 1)) == before
+
+
+def test_analyse_writes_no_files(anime_in_resolve, monkeypatch, tmp_path):
+    anime_in_resolve()
+    out_dir = tmp_path / "out"
+    run(monkeypatch, ["--analyse", "--output-dir", str(out_dir)])
+    assert not out_dir.exists() or not list(out_dir.iterdir())
+
+
+def test_footage_with_nothing_to_do_says_so(anime_in_resolve, monkeypatch, capsys,
+                                            tmp_path):
+    anime_in_resolve(holds=(1,) * 24)
+    assert run(monkeypatch, ["--output-dir", str(tmp_path / "out")]) == 0
+    out = capsys.readouterr().out
+    assert "no duplicated frames" in out
+    assert "already animated on 1s" in out
+
+
+# --------------------------------------------------------------------------
+# the full run
+# --------------------------------------------------------------------------
+
+def test_full_run_renders_imports_and_appends(anime_in_resolve, monkeypatch, capsys,
+                                              tmp_path):
+    src, _r, timeline, _items, _ = anime_in_resolve()
+    before = len(timeline.GetItemListInTrack("video", 1))
+
+    assert run(monkeypatch, ["--output-dir", str(tmp_path / "out")]) == 0
+
+    out = capsys.readouterr().out
+    assert "Wrote 24 frames" in out
+    assert "Imported:" in out
+    assert "Timeline:" in out
+    assert "Done." in out
+    assert len(timeline.GetItemListInTrack("video", 1)) == before + 1
+
+
+def test_the_rendered_file_lands_where_it_says(anime_in_resolve, monkeypatch, capsys,
+                                               tmp_path):
+    anime_in_resolve()
+    out_dir = tmp_path / "out"
+    run(monkeypatch, ["--output-dir", str(out_dir)])
+
+    rendered = list(out_dir.glob("*.avi"))
+    assert len(rendered) == 1
+    assert rendered[0].stat().st_size > 0
+    assert rendered[0].name in capsys.readouterr().out
+
+
+def test_super_scale_is_applied_to_the_imported_clip(anime_in_resolve, monkeypatch,
+                                                     tmp_path):
+    _src, resolve, _tl, _items, _ = anime_in_resolve()
+    run(monkeypatch, ["--output-dir", str(tmp_path / "out")])
+
+    pool = resolve.GetProjectManager().GetCurrentProject().GetMediaPool()
+    assert pool.imported, "nothing was imported"
+    assert pool.imported[0].GetClipProperty("Super Scale") == "2"
+
+
+def test_no_upscale_flag_skips_super_scale(anime_in_resolve, monkeypatch, tmp_path):
+    _src, resolve, _tl, _items, _ = anime_in_resolve()
+    run(monkeypatch, ["--no-upscale", "--output-dir", str(tmp_path / "out")])
+
+    pool = resolve.GetProjectManager().GetCurrentProject().GetMediaPool()
+    assert pool.imported[0].GetClipProperty("Super Scale") == ""
+
+
+def test_free_edition_skips_the_upscale_and_says_why(anime_in_resolve, monkeypatch,
+                                                     capsys, tmp_path):
+    anime_in_resolve(studio=False)
+    run(monkeypatch, ["--output-dir", str(tmp_path / "out")])
+    assert "needs DaVinci Resolve Studio" in capsys.readouterr().out
+
+
+def test_sequence_output(anime_in_resolve, monkeypatch, tmp_path):
+    anime_in_resolve()
+    out_dir = tmp_path / "out"
+    run(monkeypatch, ["--sequence", "--output-dir", str(out_dir)])
+
+    folders = [p for p in out_dir.iterdir() if p.is_dir()]
+    assert len(folders) == 1
+    assert len(list(folders[0].glob("*.png"))) == 24
+
+
+def test_a_failed_import_still_points_at_the_render(anime_in_resolve, monkeypatch,
+                                                    capsys, tmp_path):
+    """A render that Resolve will not take is still a finished render."""
+    anime_in_resolve(import_mode="none")
+    assert run(monkeypatch, ["--output-dir", str(tmp_path / "out")]) == 0
+
+    out = capsys.readouterr().out
+    assert "Import failed" in out
+    assert "waiting at" in out
+    assert "Drag it into your media pool" in out
+
+
+# --------------------------------------------------------------------------
+# guards
+# --------------------------------------------------------------------------
+
+def test_running_outside_resolve_is_explained(no_resolve, monkeypatch, capsys):
+    assert run(monkeypatch, []) == 2
+    assert "Workspace > Scripts" in capsys.readouterr().out
+
+
+def test_a_missing_media_file_is_reported(install_fake_resolve, monkeypatch, capsys):
+    install_fake_resolve([(0, 24)], media_path="/media/gone.mov")
+    assert run(monkeypatch, []) == 2
+    assert "media is missing" in capsys.readouterr().out
+
+
+def test_no_selected_clip_is_reported(monkeypatch, capsys):
+    from tests.fake_resolve import (FakeBmdModule, FakeProject, FakeProjectManager,
+                                    FakeResolve, FakeTimeline)
+    monkeypatch.setitem(
+        sys.modules, "DaVinciResolveScript",
+        FakeBmdModule(FakeResolve(FakeProjectManager(FakeProject(FakeTimeline())))))
+    assert run(monkeypatch, []) == 2
+    assert "No clip selected" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------
+# options
+# --------------------------------------------------------------------------
+
+def test_video_flag_bypasses_resolve_entirely(make_anime, monkeypatch, capsys, tmp_path):
+    src = make_anime(holds=(2,) * 8)
+    assert run(monkeypatch, ["--video", str(src), "--output-dir", str(tmp_path / "o")]) == 0
+    out = capsys.readouterr().out
+    assert "Import the result into Resolve when you are ready" in out
+
+
+def test_forced_base_hold_is_honoured(make_anime, monkeypatch, capsys, tmp_path):
+    src = make_anime(holds=(2,) * 12)
+    run(monkeypatch, ["--video", str(src), "--base-hold", "3",
+                      "--output-dir", str(tmp_path / "o")])
+    assert "on 3s" in capsys.readouterr().out
+
+
+def test_json_summary_is_machine_readable(make_anime, monkeypatch, capsys, tmp_path):
+    src = make_anime(holds=(2,) * 8)
+    run(monkeypatch, ["--video", str(src), "--json", "--output-dir", str(tmp_path / "o")])
+
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["ok"] is True
+    assert payload["plan"]["base_hold"] == 2
+    assert payload["render"]["frames_written"] == 16
+
+
+def test_quality_presets_are_accepted(make_anime, monkeypatch, tmp_path):
+    src = make_anime(holds=(2,) * 6)
+    for quality in ("fast", "better", "best"):
+        assert run(monkeypatch, ["--video", str(src), "--quality", quality,
+                                 "--output-dir", str(tmp_path / quality)]) == 0
+
+
+def test_repeat_runs_do_not_overwrite_the_previous_render(make_anime, monkeypatch,
+                                                          tmp_path):
+    src = make_anime(holds=(2,) * 6)
+    out_dir = tmp_path / "o"
+    run(monkeypatch, ["--video", str(src), "--output-dir", str(out_dir)])
+    run(monkeypatch, ["--video", str(src), "--output-dir", str(out_dir)])
+    assert len(list(out_dir.glob("*.avi"))) == 2, "the second run overwrote the first"
+
+
+# --------------------------------------------------------------------------
+# status file
+# --------------------------------------------------------------------------
+
+def test_status_file_tracks_progress_and_completion(make_anime, monkeypatch, tmp_path):
+    src = make_anime(holds=(2,) * 8)
+    status = tmp_path / "status.json"
+    run(monkeypatch, ["--video", str(src), "--status-file", str(status),
+                      "--output-dir", str(tmp_path / "o")])
+
+    payload = json.loads(status.read_text())
+    assert payload["done"] is True
+    assert payload["ok"] is True
+    assert payload["fraction"] == pytest.approx(1.0)
+    assert "shot" in payload["message"] or "smooth" in payload["message"]
+
+
+def test_status_file_records_failures(install_fake_resolve, monkeypatch, tmp_path):
+    install_fake_resolve([(0, 24)], media_path="/media/gone.mov")
+    status = tmp_path / "status.json"
+    run(monkeypatch, ["--status-file", str(status)])
+
+    payload = json.loads(status.read_text())
+    assert payload["done"] is True
+    assert payload["ok"] is False
+    assert "missing" in payload["message"]
+
+
+def test_status_file_never_contains_a_partial_write(make_anime, monkeypatch, tmp_path):
+    """The panel polls this file, so it must always parse."""
+    src = make_anime(holds=(2,) * 8)
+    status = tmp_path / "status.json"
+    run(monkeypatch, ["--video", str(src), "--status-file", str(status),
+                      "--output-dir", str(tmp_path / "o")])
+    json.loads(status.read_text())
+    assert not status.with_suffix(".tmp").exists()
+
+
+def test_an_unwritable_status_path_does_not_break_the_render(make_anime, monkeypatch,
+                                                             tmp_path, capsys):
+    src = make_anime(holds=(2,) * 6)
+    assert run(monkeypatch, ["--video", str(src),
+                             "--status-file", "/nonexistent-root/status.json",
+                             "--output-dir", str(tmp_path / "o")]) == 0
+    assert "Wrote 12 frames" in capsys.readouterr().out

@@ -23,6 +23,20 @@ local function new_widget(spec)
     for _, child in ipairs(spec) do
         table.insert(w.__children, child)
     end
+
+    -- Widget methods the panel uses.
+    w.__entries = {}
+    function w:AddItem(label)
+        table.insert(self.__entries, label)
+        if self.CurrentIndex == nil then self.CurrentIndex = 0 end
+    end
+    function w:GetItem(i) return self.__entries[i + 1] end
+    function w:Count() return #self.__entries end
+    function w:Clear() self.__entries = {} end
+    function w:Start() self.__running = true end
+    function w:Stop() self.__running = false end
+
+    if w.Enabled == nil then w.Enabled = true end
     return w
 end
 
@@ -64,6 +78,7 @@ function dispatcher:AddWindow(attrs, layout)
         __attrs = attrs,
         __layout = layout,
         __shown = false,
+        __extra = {},
         On = auto_table(),
     }
     local items = {}
@@ -71,6 +86,10 @@ function dispatcher:AddWindow(attrs, layout)
     function win:GetItems() return items end
     function win:Show() self.__shown = true end
     function win:Hide() self.__shown = false end
+    function win:AddChild(child)
+        if child and child.ID then items[child.ID] = child end
+        table.insert(self.__extra, child)
+    end
     H.widgets = items
     H.window = win
     return win
@@ -145,6 +164,24 @@ end
 
 -- Inspection helpers used from the Python tests ---------------------------
 
+function H.fire(id, event)
+    local handler = H.window.On[id] and H.window.On[id][event]
+    if not handler then
+        error("no " .. tostring(event) .. " handler for " .. tostring(id))
+    end
+    local real_execute = os.execute
+    local real_print = print
+    os.execute = function(cmd)
+        table.insert(H.commands, cmd)
+        return H.exit_code == 0, "exit", H.exit_code
+    end
+    print = function(...) end
+    local ok, err = pcall(handler, {})
+    os.execute = real_execute
+    print = real_print
+    if not ok then error(err) end
+end
+
 function H.click(id)
     local handler = H.window.On[id] and H.window.On[id].Clicked
     if not handler then error("no Clicked handler for " .. tostring(id)) end
@@ -165,6 +202,27 @@ function H.set_slider(id, value)
     H.widgets[id].Value = value
     local handler = H.window.On[id] and H.window.On[id].ValueChanged
     if handler then handler({}) end
+end
+
+function H.set_combo(id, index)
+    H.widgets[id].CurrentIndex = index
+    local handler = H.window.On[id] and H.window.On[id].CurrentIndexChanged
+    if handler then handler({}) end
+end
+
+function H.set_checkbox(id, value)
+    H.widgets[id].Checked = value
+    local handler = H.window.On[id] and H.window.On[id].Clicked
+    if handler then handler({}) end
+end
+
+function H.combo_items(id)
+    return table.concat(H.widgets[id].__entries or {}, ",")
+end
+
+function H.enabled(id)
+    local w = H.widgets[id]
+    return w ~= nil and w.Enabled ~= false
 end
 
 function H.command_count() return #H.commands end

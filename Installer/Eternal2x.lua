@@ -1,14 +1,15 @@
--- Eternal2x Resolve Script Panel (Workspace > Scripts)
--- Compact UI: 4 actions + 1 sensitivity slider
+-- Eternal2x  --  smooth 2x for hand-drawn animation
+-- Resolve script panel: Workspace > Scripts > Eternal2x
+
+-- ---------------------------------------------------------------------------
+-- paths and config
+-- ---------------------------------------------------------------------------
 
 local function script_dir()
     local info = debug.getinfo(1, "S")
     local src = info.source or ""
-    if src:sub(1, 1) == "@" then
-        src = src:sub(2)
-    end
-    local norm = src:gsub("\\", "/")
-    return norm:match("(.*/)")
+    if src:sub(1, 1) == "@" then src = src:sub(2) end
+    return (src:gsub("\\", "/")):match("(.*/)")
 end
 
 local function trim_trailing_sep(path)
@@ -17,121 +18,74 @@ local function trim_trailing_sep(path)
     return out
 end
 
+local function join_path(a, b)
+    if not a or a == "" then return b end
+    local last = a:sub(-1)
+    if last == "/" or last == "\\" then return a .. b end
+    return a .. "/" .. b
+end
+
 local function read_conf(path)
     local conf = {}
     local f = io.open(path, "r")
-    if not f then
-        return conf
-    end
+    if not f then return conf end
     for line in f:lines() do
         local k, v = line:match("^%s*([^=]+)%s*=%s*(.-)%s*$")
-        if k and v then
-            conf[k] = v
-        end
+        if k and v then conf[k] = v end
     end
     f:close()
     return conf
 end
 
 local function parse_bool(value, default_value)
-    if value == nil then
-        return default_value
-    end
+    if value == nil then return default_value end
     local s = tostring(value):lower()
-    if s == "1" or s == "true" or s == "yes" or s == "on" then
-        return true
-    end
-    if s == "0" or s == "false" or s == "no" or s == "off" then
-        return false
-    end
+    if s == "1" or s == "true" or s == "yes" or s == "on" then return true end
+    if s == "0" or s == "false" or s == "no" or s == "off" then return false end
     return default_value
-end
-
-local function short_path(path, max_len)
-    if not path then return "" end
-    local limit = max_len or 56
-    if #path <= limit then
-        return path
-    end
-    return "..." .. path:sub(#path - limit + 4)
-end
-
-local function shell_quote(s)
-    if not s then return "" end
-    if package.config:sub(1, 1) == "\\" then
-        -- cmd.exe escaping: double internal quotes
-        return '"' .. s:gsub('"', '""') .. '"'
-    end
-    return '"' .. s:gsub('"', '\\"') .. '"'
-end
-
-local function run_command(cmd)
-    print("[Eternal2x] " .. cmd)
-    return os.execute(cmd)
 end
 
 local function is_windows()
     return package.config:sub(1, 1) == "\\"
 end
 
-local function get_selected_clip_path(resolve)
-    local project = resolve:GetProjectManager():GetCurrentProject()
-    if not project then return nil, "No active project." end
-    local timeline = project:GetCurrentTimeline()
-    if not timeline then return nil, "No active timeline." end
-
-    local items = nil
-    if timeline.GetSelectedItems then
-        items = timeline:GetSelectedItems()
+local function shell_quote(s)
+    if not s then return "" end
+    if is_windows() then
+        return '"' .. s:gsub('"', '""') .. '"'
     end
-
-    local item = nil
-    if items and type(items) == "table" then
-        for _, v in pairs(items) do
-            item = v
-            break
-        end
-    end
-    if not item and timeline.GetCurrentVideoItem then
-        item = timeline:GetCurrentVideoItem()
-    end
-    if not item then return nil, "No selected clip." end
-
-    local mpi = item:GetMediaPoolItem()
-    if not mpi then return nil, "No media pool item for clip." end
-    local props = mpi:GetClipProperty() or {}
-    local path = props["File Path"]
-    if not path or path == "" then
-        return nil, "Clip file path not available."
-    end
-    return path, nil
+    return '"' .. s:gsub('"', '\\"') .. '"'
 end
 
-local function get_resolve()
-    local ok, bmd = pcall(require, "DaVinciResolveScript")
-    if not ok or not bmd then
-        return nil, "Could not import DaVinciResolveScript."
-    end
-    local resolve = bmd.scriptapp("Resolve")
-    if not resolve then
-        return nil, "Could not connect to Resolve."
-    end
-    return resolve, nil
+local function short_path(path, max_len)
+    if not path then return "" end
+    local limit = max_len or 56
+    if #path <= limit then return path end
+    return "..." .. path:sub(#path - limit + 4)
 end
 
-local ui = fu.UIManager
-local disp = bmd.UIDispatcher(ui)
+local function basename(path)
+    if not path then return "" end
+    return (path:gsub("\\", "/")):match("([^/]+)$") or path
+end
 
 local root = trim_trailing_sep(script_dir() or "")
--- When launched through Eternal2xLauncher.lua the config sits in Resolve's
--- Comp folder, not next to this file, so the launcher passes its path down.
-local CONF_PATH = _G.ETERNAL2X_CONF
-    or ((root ~= "" and (root .. "/") or "") .. "Eternal2x.conf")
+-- Launched through Eternal2xLauncher.lua the config lives in Resolve's Comp
+-- folder rather than beside this file, so the launcher passes its path down.
+local CONF_PATH = _G.ETERNAL2X_CONF or join_path(root, "Eternal2x.conf")
 local conf = read_conf(CONF_PATH)
 local REPO_ROOT = trim_trailing_sep(conf["repo_root"] or _G.ETERNAL2X_ROOT or root or "")
 local PYTHON = conf["python"] or (is_windows() and "python" or "python3")
 local UPDATE_URL = conf["update_url"] or ""
 local AUTO_UPDATE = parse_bool(conf["auto_update"], true)
+local OUTPUT_DIR = conf["output_dir"] or ""
+local QUALITY = conf["quality"] or "better"
+local DO_UPSCALE = parse_bool(conf["upscale"], true)
+local DO_INTERPOLATE = parse_bool(conf["interpolate"], true)
+local BASE_HOLD = tonumber(conf["base_hold"] or "0") or 0
+
+local STATUS_PATH = join_path(REPO_ROOT ~= "" and REPO_ROOT or root, ".eternal2x_status.json")
+local LOG_PATH = join_path(REPO_ROOT ~= "" and REPO_ROOT or root, ".eternal2x_last_run.log")
 
 local function save_conf()
     local f = io.open(CONF_PATH, "w")
@@ -140,210 +94,462 @@ local function save_conf()
     f:write("python=" .. PYTHON .. "\n")
     f:write("update_url=" .. UPDATE_URL .. "\n")
     f:write("auto_update=" .. (AUTO_UPDATE and "true" or "false") .. "\n")
+    f:write("output_dir=" .. OUTPUT_DIR .. "\n")
+    f:write("quality=" .. QUALITY .. "\n")
+    f:write("upscale=" .. (DO_UPSCALE and "true" or "false") .. "\n")
+    f:write("interpolate=" .. (DO_INTERPOLATE and "true" or "false") .. "\n")
+    f:write("base_hold=" .. tostring(BASE_HOLD) .. "\n")
     f:close()
 end
 
 local function read_version()
-    local vf = io.open((REPO_ROOT ~= "" and (REPO_ROOT .. "/") or "") .. "VERSION", "r")
+    local vf = io.open(join_path(REPO_ROOT, "VERSION"), "r")
     if not vf then return "?" end
     local v = vf:read("*l") or "?"
     vf:close()
+    -- Tolerate a UTF-8 BOM left by a Windows editor.
+    v = v:gsub("^\239\187\191", "")
     return v:match("^%s*(.-)%s*$") or "?"
 end
 
 local CURRENT_VERSION = read_version()
 
+-- ---------------------------------------------------------------------------
+-- Resolve
+-- ---------------------------------------------------------------------------
+
+local function get_resolve()
+    local ok, mod = pcall(require, "DaVinciResolveScript")
+    if not ok or not mod then
+        return nil, "Could not reach Resolve. Run this from Workspace > Scripts."
+    end
+    local r = mod.scriptapp("Resolve")
+    if not r then return nil, "Could not connect to Resolve." end
+    return r, nil
+end
+
+local function selected_clip_path()
+    local resolve, err = get_resolve()
+    if not resolve then return nil, err end
+    local project = resolve:GetProjectManager():GetCurrentProject()
+    if not project then return nil, "No project is open." end
+    local timeline = project:GetCurrentTimeline()
+    if not timeline then return nil, "No timeline is open." end
+
+    local item = nil
+    if timeline.GetSelectedItems then
+        local items = timeline:GetSelectedItems()
+        if items and type(items) == "table" then
+            for _, v in pairs(items) do item = v break end
+        end
+    end
+    if not item and timeline.GetCurrentVideoItem then
+        item = timeline:GetCurrentVideoItem()
+    end
+    if not item then return nil, "No clip selected. Click a clip on the timeline." end
+
+    local mpi = item:GetMediaPoolItem()
+    if not mpi then return nil, "That item has no source media." end
+    local props = mpi:GetClipProperty() or {}
+    local path = props["File Path"]
+    if not path or path == "" then return nil, "Could not read the clip's file path." end
+    return path, nil
+end
+
+-- ---------------------------------------------------------------------------
+-- running stages
+-- ---------------------------------------------------------------------------
+
+local function build_command(module_name, args, background)
+    local cd = (is_windows() and "cd /d " or "cd ") .. shell_quote(REPO_ROOT)
+    local run = shell_quote(PYTHON) .. " -m " .. module_name .. (args or "")
+    local redirect = " > " .. shell_quote(LOG_PATH) .. " 2>&1"
+    if not background then
+        return cd .. " && " .. run .. redirect
+    end
+    if is_windows() then
+        return cd .. " && start \"Eternal2x\" /B " .. run .. redirect
+    end
+    return cd .. " && " .. run .. redirect .. " &"
+end
+
+local function run_blocking(module_name, args)
+    local cmd = build_command(module_name, args, false)
+    print("[Eternal2x] " .. cmd)
+    local ok = os.execute(cmd)
+    return (ok == true or ok == 0)
+end
+
+local function run_background(module_name, args)
+    local cmd = build_command(module_name, args, true)
+    print("[Eternal2x] " .. cmd)
+    os.execute(cmd)
+end
+
+local function read_log()
+    local f = io.open(LOG_PATH, "r")
+    if not f then return "" end
+    local s = f:read("*a") or ""
+    f:close()
+    return s
+end
+
+-- The status file is written by Stages/resolve_smooth.py. Its shape is fixed
+-- and its strings are sanitised, so pattern matching is enough and the panel
+-- does not need a JSON parser.
+local function read_status()
+    local f = io.open(STATUS_PATH, "r")
+    if not f then return nil end
+    local s = f:read("*a") or ""
+    f:close()
+    if s == "" then return nil end
+    return {
+        stage    = s:match('"stage"%s*:%s*"(.-)"') or "",
+        message  = s:match('"message"%s*:%s*"(.-)"') or "",
+        fraction = tonumber(s:match('"fraction"%s*:%s*([%-%d%.eE]+)')) or 0,
+        done     = s:match('"done"%s*:%s*(%a+)') == "true",
+        ok       = s:match('"ok"%s*:%s*(%a+)') == "true",
+    }
+end
+
+local function clear_status()
+    os.remove(STATUS_PATH)
+end
+
+-- ---------------------------------------------------------------------------
+-- window
+-- ---------------------------------------------------------------------------
+
+local ui = fu.UIManager
+local disp = bmd.UIDispatcher(ui)
+
+local QUALITIES = { "fast", "better", "best" }
+local QUALITY_LABELS = { "Fast", "Better", "Best" }
+local HOLDS = { 0, 1, 2, 3 }
+local HOLD_LABELS = { "Auto detect", "On 1s", "On 2s", "On 3s" }
+
+local function index_of(list, value)
+    for i, v in ipairs(list) do
+        if v == value then return i - 1 end
+    end
+    return 0
+end
+
 local win = disp:AddWindow({
     ID = "Eternal2x",
     WindowTitle = "Eternal2x  v" .. CURRENT_VERSION,
-    Geometry = {100, 100, 440, 500},
+    Geometry = { 100, 100, 460, 620 },
     StyleSheet = [[
-        QWidget {
-            background-color: #0b0b0f;
-            color: #e2e2ea;
-            font-size: 12px;
-        }
-        QLabel#Title {
-            font-size: 20px;
-            font-weight: 700;
-            color: #ededf4;
-            padding-top: 4px;
-        }
-        QLabel#SubTitle {
-            color: #6e6e82;
-            font-size: 11px;
-            padding-bottom: 6px;
-        }
+        QWidget { background-color: #0b0b0f; color: #e2e2ea; font-size: 12px; }
+        QLabel#Title { font-size: 22px; font-weight: 700; color: #ededf4; padding-top: 2px; }
+        QLabel#SubTitle { color: #6e6e82; font-size: 11px; padding-bottom: 8px; }
         QLabel#Section {
-            color: #9a9ab0;
-            font-size: 10px;
-            font-weight: 700;
-            padding-top: 8px;
-            padding-bottom: 2px;
-            letter-spacing: 0.5px;
+            color: #9a9ab0; font-size: 10px; font-weight: 700;
+            padding-top: 10px; padding-bottom: 2px; letter-spacing: 0.6px;
         }
-        QLabel#Meta {
-            color: #6e6e82;
-            background-color: #121216;
-            border: 1px solid #1e1e26;
-            border-radius: 6px;
-            padding: 6px 8px;
-            font-size: 10px;
+        QLabel#Card {
+            background-color: #121216; border: 1px solid #1e1e26;
+            border-radius: 6px; padding: 8px 10px; color: #c8c8d6; font-size: 11px;
+        }
+        QLabel#Meta { color: #5c5c70; font-size: 10px; padding-top: 2px; }
+        QLabel#Progress {
+            color: #7c6fef; font-size: 11px; font-family: monospace;
+            padding: 2px 0px;
         }
         QPushButton {
-            background-color: #16161e;
-            border: 1px solid #28283a;
-            border-radius: 7px;
-            min-height: 34px;
-            padding: 6px 14px;
-            font-weight: 600;
-            font-size: 12px;
-            color: #e2e2ea;
+            background-color: #16161e; border: 1px solid #28283a; border-radius: 7px;
+            min-height: 32px; padding: 6px 14px; font-weight: 600; color: #e2e2ea;
         }
-        QPushButton:hover {
-            background-color: #1e1e28;
-            border-color: #7c6fef;
-        }
+        QPushButton:hover { background-color: #1e1e28; border-color: #7c6fef; }
         QPushButton:pressed { background-color: #121218; }
+        QPushButton:disabled { color: #4a4a5a; border-color: #1e1e26; background-color: #101014; }
         QPushButton#StartBtn {
-            background-color: #7c6fef;
-            border: 1px solid #9b90f5;
-            color: #0b0b0f;
-            font-size: 13px;
-            font-weight: 700;
-            min-height: 38px;
+            background-color: #7c6fef; border: 1px solid #9b90f5; color: #0b0b0f;
+            font-size: 13px; font-weight: 700; min-height: 40px;
         }
         QPushButton#StartBtn:hover { background-color: #9b90f5; }
-        QPushButton#StartBtn:pressed { background-color: #6a5ed6; }
-        QPushButton#UpdateBtn {
-            background-color: #121216;
-            border: 1px solid #1e1e26;
-            min-height: 26px;
-            font-size: 11px;
-            color: #6e6e82;
+        QPushButton#StartBtn:disabled { background-color: #2a2740; color: #6a6a80; border-color: #2a2740; }
+        QPushButton#GhostBtn {
+            background-color: #121216; border: 1px solid #1e1e26;
+            min-height: 26px; font-size: 11px; color: #6e6e82; font-weight: 500;
         }
-        QPushButton#UpdateBtn:hover {
-            background-color: #1a1a22;
-            color: #9a9ab0;
+        QPushButton#GhostBtn:hover { background-color: #1a1a22; color: #9a9ab0; }
+        QComboBox {
+            background-color: #16161e; border: 1px solid #28283a; border-radius: 6px;
+            padding: 5px 8px; min-height: 24px; color: #e2e2ea;
         }
-        QCheckBox { color: #6e6e82; font-size: 11px; spacing: 6px; }
+        QComboBox:hover { border-color: #7c6fef; }
+        QComboBox QAbstractItemView {
+            background-color: #16161e; border: 1px solid #28283a;
+            selection-background-color: #7c6fef; selection-color: #0b0b0f;
+        }
+        QCheckBox { color: #c8c8d6; font-size: 11px; spacing: 7px; }
         QCheckBox::indicator {
-            width: 14px; height: 14px; border-radius: 3px;
+            width: 15px; height: 15px; border-radius: 3px;
             border: 1px solid #28283a; background: #121216;
         }
-        QCheckBox::indicator:checked {
-            background: #7c6fef; border-color: #9b90f5;
-        }
-        QSlider::groove:horizontal {
-            height: 6px;
-            border-radius: 3px;
-            background: #1e1e26;
-        }
-        QSlider::handle:horizontal {
-            width: 16px;
-            height: 16px;
-            background: #7c6fef;
-            border: 2px solid #9b90f5;
-            border-radius: 8px;
-            margin: -5px 0;
-        }
-        QSlider::sub-page:horizontal {
-            background: #7c6fef;
-            border-radius: 3px;
-        }
-        QLabel#Status {
-            background-color: #121216;
-            border: 1px solid #1e1e26;
-            border-radius: 6px;
-            padding: 8px;
-            color: #9a9ab0;
-            font-size: 11px;
-        }
-    ]]
+        QCheckBox::indicator:checked { background: #7c6fef; border-color: #9b90f5; }
+    ]],
 }, ui:VGroup{
-    ui:Label{ID="Title", Text="Eternal2x", ObjectName="Title"},
-    ui:Label{ID="SubTitle", Text="Smart Upscale  \xC2\xB7  v" .. CURRENT_VERSION, ObjectName="SubTitle"},
-    ui:Label{ID="WorkflowSection", Text="WORKFLOW", ObjectName="Section"},
-    ui:HGroup{
-        ui:Button{ID="DetectBtn", Text="\xE2\x97\x89  Detect"},
-        ui:Button{ID="CutFrameBtn", Text="\xE2\x9C\x82  Sequence"},
+    Spacing = 2,
+
+    ui:Label{ ID = "Title", Text = "Eternal2x", ObjectName = "Title" },
+    ui:Label{ ID = "SubTitle", ObjectName = "SubTitle",
+              Text = "Smooth 2x for hand-drawn animation  \xC2\xB7  v" .. CURRENT_VERSION },
+
+    ui:Label{ ID = "SourceSection", Text = "SOURCE CLIP", ObjectName = "Section" },
+    ui:Label{ ID = "SourceLabel", Text = "No clip selected.", ObjectName = "Card",
+              WordWrap = true },
+    ui:HGroup{ Spacing = 6,
+        ui:Button{ ID = "RefreshBtn", Text = "Use Selected Clip", ObjectName = "GhostBtn" },
+        ui:Button{ ID = "AnalyseBtn", Text = "Analyse", ObjectName = "GhostBtn" },
     },
-    ui:HGroup{
-        ui:Button{ID="RegroupBtn", Text="\xE2\x8A\x9E  Regroup"},
-        ui:Button{ID="UpscaleBtn", Text="\xE2\x96\xB2  Upscale + Interpolate", ObjectName="StartBtn"},
+    ui:Label{ ID = "AnalysisLabel", Text = "Analyse to see how this clip is animated.",
+              ObjectName = "Card", WordWrap = true },
+
+    ui:Label{ ID = "SettingsSection", Text = "SETTINGS", ObjectName = "Section" },
+    ui:HGroup{ Spacing = 6,
+        ui:Label{ Text = "Quality", Weight = 0.4 },
+        ui:ComboBox{ ID = "QualityCombo", Weight = 0.6 },
     },
-    ui:Label{ID="SensitivitySection", Text="SENSITIVITY", ObjectName="Section"},
-    ui:Label{ID="SensLabel", Text="Interpolate Sensitivity: 0.20"},
-    ui:Slider{ID="SensSlider", Orientation="Horizontal", Minimum=0, Maximum=100, Value=20},
-    ui:Label{ID="StatusSection", Text="STATUS", ObjectName="Section"},
-    ui:Label{ID="Status", Text="Ready.", ObjectName="Status", WordWrap=true},
-    ui:Label{ID="Meta", Text="Repo: (not set)", ObjectName="Meta", WordWrap=true},
-    ui:HGroup{
-        ui:Button{ID="UpdateBtn", Text="\xE2\x86\xBB  Check for Updates", ObjectName="UpdateBtn"},
-        ui:CheckBox{ID="AutoUpdateCB", Text="Auto-update", Checked=AUTO_UPDATE},
+    ui:HGroup{ Spacing = 6,
+        ui:Label{ Text = "Hold pattern", Weight = 0.4 },
+        ui:ComboBox{ ID = "HoldCombo", Weight = 0.6 },
+    },
+    ui:HGroup{ Spacing = 6,
+        ui:CheckBox{ ID = "UpscaleCB", Text = "Upscale 2x", Checked = DO_UPSCALE },
+        ui:CheckBox{ ID = "InterpCB", Text = "Interpolate", Checked = DO_INTERPOLATE },
+    },
+
+    ui:Label{ ID = "RunSection", Text = "RUN", ObjectName = "Section" },
+    ui:Button{ ID = "SmoothBtn", Text = "\xE2\x96\xB2  Smooth Clip", ObjectName = "StartBtn" },
+    ui:Label{ ID = "Progress", Text = "", ObjectName = "Progress" },
+    ui:Label{ ID = "Status", Text = "Ready.", ObjectName = "Card", WordWrap = true },
+    ui:HGroup{ Spacing = 6,
+        ui:Button{ ID = "RefreshStatusBtn", Text = "Refresh Progress", ObjectName = "GhostBtn" },
+        ui:Button{ ID = "CancelBtn", Text = "Reset", ObjectName = "GhostBtn" },
+    },
+
+    ui:Label{ ID = "Meta", Text = "", ObjectName = "Meta", WordWrap = true },
+    ui:HGroup{ Spacing = 6,
+        ui:Button{ ID = "UpdateBtn", Text = "\xE2\x86\xBB  Check for Updates", ObjectName = "GhostBtn" },
+        ui:CheckBox{ ID = "AutoUpdateCB", Text = "Auto-update", Checked = AUTO_UPDATE },
     },
 })
 
 local items = win:GetItems()
 
+for _, label in ipairs(QUALITY_LABELS) do items.QualityCombo:AddItem(label) end
+for _, label in ipairs(HOLD_LABELS) do items.HoldCombo:AddItem(label) end
+items.QualityCombo.CurrentIndex = index_of(QUALITIES, QUALITY)
+items.HoldCombo.CurrentIndex = index_of(HOLDS, BASE_HOLD)
+
+-- ---------------------------------------------------------------------------
+-- state
+-- ---------------------------------------------------------------------------
+
+local SOURCE_PATH = nil
+local RUNNING = false
+
+local function set_status(msg)
+    items.Status.Text = msg or ""
+    print("[Eternal2x] " .. (msg or ""))
+end
+
+local function set_progress(fraction, stage)
+    if not fraction or fraction <= 0 then
+        items.Progress.Text = ""
+        return
+    end
+    local width = 24
+    local filled = math.floor(fraction * width + 0.5)
+    if filled > width then filled = width end
+    local bar = string.rep("\xE2\x96\x88", filled) .. string.rep("\xE2\x96\x91", width - filled)
+    items.Progress.Text = string.format("%s  %d%%  %s", bar, math.floor(fraction * 100 + 0.5),
+                                        stage or "")
+end
+
+local function set_busy(busy)
+    RUNNING = busy
+    items.SmoothBtn.Enabled = not busy
+    items.AnalyseBtn.Enabled = not busy
+    items.RefreshBtn.Enabled = not busy
+    items.SmoothBtn.Text = busy and "Working..." or "\xE2\x96\xB2  Smooth Clip"
+end
+
+local function refresh_source()
+    local path, err = selected_clip_path()
+    if not path then
+        SOURCE_PATH = nil
+        items.SourceLabel.Text = err or "No clip selected."
+        return false
+    end
+    SOURCE_PATH = path
+    items.SourceLabel.Text = basename(path)
+    items.Meta.Text = short_path(path, 68)
+    return true
+end
+
+local function current_args(extra)
+    local args = ""
+    local quality = QUALITIES[(items.QualityCombo.CurrentIndex or 1) + 1] or "better"
+    args = args .. " --quality " .. quality
+    local hold = HOLDS[(items.HoldCombo.CurrentIndex or 0) + 1] or 0
+    if hold and hold > 0 then
+        args = args .. " --base-hold " .. tostring(hold)
+    end
+    if not items.UpscaleCB.Checked then args = args .. " --no-upscale" end
+    if not items.InterpCB.Checked then args = args .. " --no-interpolate" end
+    if OUTPUT_DIR ~= "" then args = args .. " --output-dir " .. shell_quote(OUTPUT_DIR) end
+    args = args .. " --status-file " .. shell_quote(STATUS_PATH)
+    return args .. (extra or "")
+end
+
+local function apply_status(st)
+    if not st then return false end
+    set_progress(st.fraction, st.stage)
+    if st.message ~= "" then set_status(st.message) end
+    if st.done then
+        set_busy(false)
+        if st.ok then
+            set_progress(1.0, "Finished")
+        else
+            set_progress(0, nil)
+            set_status(st.message ~= "" and st.message or "Failed. See the console for details.")
+        end
+        return true
+    end
+    return false
+end
+
+-- ---------------------------------------------------------------------------
+-- polling
+-- ---------------------------------------------------------------------------
+
+-- ui:Timer is not present on every Resolve build, so it is created defensively
+-- and the Refresh Progress button covers the case where it is missing.
+local timer = nil
+local have_timer = pcall(function()
+    timer = ui:Timer({ ID = "PollTimer", Interval = 500 })
+end)
+
+if have_timer and timer then
+    win:AddChild(timer)
+    function win.On.PollTimer.Timeout(ev)
+        if not RUNNING then return end
+        apply_status(read_status())
+    end
+end
+
+local function start_polling()
+    if have_timer and timer and timer.Start then
+        pcall(function() timer:Start() end)
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- handlers
+-- ---------------------------------------------------------------------------
+
 function win.On.Eternal2x.Close(ev)
+    save_conf()
     disp:ExitLoop()
 end
 
-local function set_status(msg)
-    local line = msg or ""
-    if items and items.Status then
-        items.Status.Text = line
-    end
-    print("[Eternal2x] " .. line)
-end
-
-local function sensitivity_value()
-    local v = 20
-    if items and items.SensSlider and items.SensSlider.Value then
-        v = items.SensSlider.Value
-    end
-    return v / 100.0
-end
-
-function win.On.SensSlider.ValueChanged(ev)
-    local v = sensitivity_value()
-    if items and items.SensLabel then
-        items.SensLabel.Text = string.format("Interpolate Sensitivity: %.2f", v)
+function win.On.RefreshBtn.Clicked(ev)
+    if refresh_source() then
+        set_status("Ready.")
+        items.AnalysisLabel.Text = "Analyse to see how this clip is animated."
+    else
+        set_status(items.SourceLabel.Text)
     end
 end
 
-local function build_command(module_name, extra_args)
-    local args = extra_args or ""
-    if is_windows() then
-        return "cd /d " .. shell_quote(REPO_ROOT)
-            .. " && " .. shell_quote(PYTHON)
-            .. " -m " .. module_name
-            .. args
-    end
-    return "cd " .. shell_quote(REPO_ROOT)
-        .. " && " .. shell_quote(PYTHON)
-        .. " -m " .. module_name
-        .. args
-end
-
-local function run_stage(stage_label, module_name, extra_args)
+function win.On.AnalyseBtn.Clicked(ev)
     if REPO_ROOT == "" then
-        set_status("Missing repo root. Reinstall using Installer/install_eternal2x.py.")
+        set_status("Plugin folder not configured. Re-run the installer.")
         return
     end
-    set_status(stage_label .. " running...")
-    local ok = run_command(build_command(module_name, extra_args))
-    if ok == true or ok == 0 then
-        set_status(stage_label .. " finished.")
-    else
-        set_status(stage_label .. " failed. Check Console for details.")
+    if not SOURCE_PATH and not refresh_source() then
+        set_status(items.SourceLabel.Text)
+        return
     end
+    set_status("Analysing...")
+    clear_status()
+    run_blocking("Stages.resolve_smooth", current_args(" --analyse"))
+    local st = read_status()
+    if st and st.message ~= "" then
+        items.AnalysisLabel.Text = st.message
+        set_status(st.ok and "Analysis complete." or st.message)
+    else
+        items.AnalysisLabel.Text = "Could not analyse the clip."
+        set_status("Analysis failed. See the console for details.")
+    end
+    set_progress(0, nil)
+end
+
+function win.On.SmoothBtn.Clicked(ev)
+    if REPO_ROOT == "" then
+        set_status("Plugin folder not configured. Re-run the installer.")
+        return
+    end
+    if not SOURCE_PATH and not refresh_source() then
+        set_status(items.SourceLabel.Text)
+        return
+    end
+    clear_status()
+    set_busy(true)
+    set_progress(0.01, "Starting")
+    set_status("Working. Resolve stays usable while this runs.")
+    run_background("Stages.resolve_smooth", current_args(""))
+    start_polling()
+end
+
+function win.On.RefreshStatusBtn.Clicked(ev)
+    local st = read_status()
+    if not st then
+        set_status("No run in progress.")
+        return
+    end
+    apply_status(st)
+end
+
+function win.On.CancelBtn.Clicked(ev)
+    clear_status()
+    set_busy(false)
+    set_progress(0, nil)
+    set_status("Ready.")
+end
+
+function win.On.QualityCombo.CurrentIndexChanged(ev)
+    QUALITY = QUALITIES[(items.QualityCombo.CurrentIndex or 1) + 1] or "better"
+    save_conf()
+end
+
+function win.On.HoldCombo.CurrentIndexChanged(ev)
+    BASE_HOLD = HOLDS[(items.HoldCombo.CurrentIndex or 0) + 1] or 0
+    save_conf()
+end
+
+function win.On.UpscaleCB.Clicked(ev)
+    DO_UPSCALE = items.UpscaleCB.Checked
+    save_conf()
+end
+
+function win.On.InterpCB.Clicked(ev)
+    DO_INTERPOLATE = items.InterpCB.Checked
+    save_conf()
+end
+
+function win.On.AutoUpdateCB.Clicked(ev)
+    AUTO_UPDATE = items.AutoUpdateCB.Checked
+    save_conf()
+    set_status(AUTO_UPDATE and "Auto-update enabled." or "Auto-update disabled.")
 end
 
 local function run_update(auto_mode)
     if REPO_ROOT == "" then
-        set_status("Missing repo root. Reinstall using Installer/install_eternal2x.py.")
+        set_status("Plugin folder not configured. Re-run the installer.")
         return
     end
     if UPDATE_URL == "" then
@@ -351,80 +557,39 @@ local function run_update(auto_mode)
         return
     end
     local args = " --meta-url " .. shell_quote(UPDATE_URL)
-    if auto_mode then
-        args = args .. " --auto"
+    if auto_mode then args = args .. " --auto" end
+    if not auto_mode then set_status("Checking for updates...") end
+    local ok = run_blocking("Stages.resolve_update", args)
+    if auto_mode then return end
+    local log = read_log()
+    local line = log:match("([^\n]*Updat[^\n]*)") or log:match("([^\n]*No update[^\n]*)")
+    if line and line ~= "" then
+        set_status(line)
+    elseif ok then
+        set_status("Update check complete.")
+    else
+        set_status("Update check failed. See the console for details.")
     end
-    if not auto_mode then
-        set_status("Checking for updates...")
-    end
-    local ok = run_command(build_command("Stages.resolve_update", args))
-    if not auto_mode then
-        if ok == true or ok == 0 then
-            set_status("Update check complete. See Console for details.")
-        else
-            set_status("Update failed. See Console for details.")
-        end
-    end
-end
-
-function win.On.DetectBtn.Clicked(ev)
-    local resolve, err = get_resolve()
-    if not resolve then
-        set_status(err)
-        return
-    end
-    local path, perr = get_selected_clip_path(resolve)
-    if not path then
-        set_status(perr)
-        return
-    end
-    local v = sensitivity_value()
-    local args = " --video " .. shell_quote(path)
-        .. " --sensitivity " .. string.format("%.4f", v)
-    run_stage("Detect", "Stages.resolve_detect_markers", args)
-end
-
-function win.On.CutFrameBtn.Clicked(ev)
-    run_stage("Sequence", "Stages.resolve_cut_and_sequence", "")
-end
-
-function win.On.RegroupBtn.Clicked(ev)
-    run_stage("Regroup", "Stages.resolve_regroup", "")
-end
-
-function win.On.UpscaleBtn.Clicked(ev)
-    local v = sensitivity_value()
-    local args = " --sensitivity " .. string.format("%.4f", v)
-    run_stage("Upscale and Interpolate", "Stages.resolve_upscale_interpolate", args)
 end
 
 function win.On.UpdateBtn.Clicked(ev)
     run_update(false)
 end
 
-function win.On.AutoUpdateCB.Clicked(ev)
-    AUTO_UPDATE = items.AutoUpdateCB.Checked
-    save_conf()
-    if AUTO_UPDATE then
-        set_status("Auto-update enabled.")
-    else
-        set_status("Auto-update disabled. Use 'Check for Updates' manually.")
-    end
-end
+-- ---------------------------------------------------------------------------
+-- start
+-- ---------------------------------------------------------------------------
 
 win:Show()
+
 if REPO_ROOT == "" then
-    if items and items.Meta then
-        items.Meta.Text = "Repo: not configured"
-    end
-    set_status("Warning: no config found. Run installer script.")
+    items.Meta.Text = "Plugin folder not configured."
+    set_status("Run Installer/install_eternal2x.py, then restart Resolve.")
 else
-    if items and items.Meta then
-        items.Meta.Text = "Repo: " .. short_path(REPO_ROOT, 62)
-    end
-    set_status("Ready.")
-    if AUTO_UPDATE then
-        run_update(true)
-    end
+    items.Meta.Text = short_path(REPO_ROOT, 68)
+    refresh_source()
+    set_status(SOURCE_PATH and "Ready." or items.SourceLabel.Text)
+    if AUTO_UPDATE then run_update(true) end
 end
+
 disp:RunLoop()

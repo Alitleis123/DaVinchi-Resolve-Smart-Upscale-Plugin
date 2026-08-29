@@ -547,7 +547,7 @@ class InstallerApp:
         required = [
             self.repo_root / "Installer" / "Eternal2xLauncher.lua",
             self.repo_root / "Installer" / "Eternal2x.lua",
-            self.repo_root / "Stages" / "resolve_detect_markers.py",
+            self.repo_root / "Stages" / "resolve_smooth.py",
             self.repo_root / "Pipeline" / "config.py",
         ]
         missing = [str(p) for p in required if not p.exists()]

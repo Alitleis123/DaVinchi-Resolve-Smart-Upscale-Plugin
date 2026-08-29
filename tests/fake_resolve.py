@@ -273,16 +273,79 @@ class FakeTimeline(_MarkerHost):
             self._current_video_item = items[0]
 
 
+class FakeMediaPool:
+    """Import and timeline-append, the two operations the plugin relies on.
+
+    `import_mode` controls which call shape Resolve accepts, so tests can pin
+    down behaviour on a build that only supports one of them:
+      "any"        -- every documented form works
+      "file_only"  -- plain file paths only, sequence descriptors rejected
+      "none"       -- imports always fail
+    """
+
+    def __init__(self, timeline: Optional["FakeTimeline"] = None,
+                 import_mode: str = "any") -> None:
+        self._timeline = timeline
+        self.import_mode = import_mode
+        self.imported: List[FakeMediaPoolItem] = []
+        self.import_calls: List[object] = []
+        self.append_calls: List[object] = []
+
+    def ImportMedia(self, payload):
+        self.import_calls.append(payload)
+        if self.import_mode == "none":
+            return []
+        entries = payload if isinstance(payload, (list, tuple)) else [payload]
+        if not entries:
+            return []
+        first = entries[0]
+        if isinstance(first, dict):
+            if self.import_mode == "file_only":
+                return []
+            path = str(first.get("FilePath", ""))
+        else:
+            path = str(first)
+        if not path:
+            return []
+        item = FakeMediaPoolItem(name=path.rsplit("/", 1)[-1], file_path=path)
+        self.imported.append(item)
+        return [item]
+
+    def AppendToTimeline(self, payload):
+        self.append_calls.append(payload)
+        items = payload if isinstance(payload, (list, tuple)) else [payload]
+        if self._timeline is None:
+            return []
+        appended = []
+        for mpi in items:
+            if not isinstance(mpi, FakeMediaPoolItem):
+                return []
+            start = self._timeline.GetEndFrame()
+            item = FakeTimelineItem(start, 24, mpi, name=mpi.GetName(),
+                                    strict=self._timeline._strict)
+            self._timeline.add_item(item, track=1)
+            appended.append(item)
+        return appended
+
+    def GetCurrentFolder(self):
+        return None
+
+
 class FakeProject:
-    def __init__(self, timeline: Optional[FakeTimeline] = None, name: str = "Project") -> None:
+    def __init__(self, timeline: Optional[FakeTimeline] = None, name: str = "Project",
+                 media_pool: Optional[FakeMediaPool] = None) -> None:
         self._timeline = timeline
         self._name = name
+        self._media_pool = media_pool if media_pool is not None else FakeMediaPool(timeline)
 
     def GetName(self) -> str:
         return self._name
 
     def GetCurrentTimeline(self) -> Optional[FakeTimeline]:
         return self._timeline
+
+    def GetMediaPool(self) -> FakeMediaPool:
+        return self._media_pool
 
     def GetTimelineCount(self) -> int:
         return 1 if self._timeline else 0
@@ -297,11 +360,20 @@ class FakeProjectManager:
 
 
 class FakeResolve:
-    def __init__(self, project_manager: Optional[FakeProjectManager] = None) -> None:
+    def __init__(self, project_manager: Optional[FakeProjectManager] = None,
+                 studio: bool = True, version: str = "19.0.3") -> None:
         self._pm = project_manager or FakeProjectManager()
+        self._studio = studio
+        self._version = version
 
     def GetProjectManager(self) -> FakeProjectManager:
         return self._pm
+
+    def GetVersionString(self) -> str:
+        return f"{self._version} {'Studio' if self._studio else 'Lite'}"
+
+    def GetProductName(self) -> str:
+        return "DaVinci Resolve Studio" if self._studio else "DaVinci Resolve"
 
     def GetCurrentPage(self) -> str:
         return "edit"
@@ -321,7 +393,8 @@ class FakeBmdModule:
 
 
 def build_session(clips, *, strict: bool = True, selected_index: Optional[int] = 0,
-                  media_path: str = "/media/clip.mov", track: int = 1):
+                  media_path: str = "/media/clip.mov", track: int = 1,
+                  studio: bool = True, import_mode: str = "any"):
     """Build a Resolve session in one call.
 
     `clips` is a list of (start, duration) or (start, duration, left_offset).
@@ -341,5 +414,7 @@ def build_session(clips, *, strict: bool = True, selected_index: Optional[int] =
         items.append(item)
     if selected_index is not None and items:
         timeline.select(items[selected_index])
-    resolve = FakeResolve(FakeProjectManager(FakeProject(timeline)))
+    pool = FakeMediaPool(timeline, import_mode=import_mode)
+    project = FakeProject(timeline, media_pool=pool)
+    resolve = FakeResolve(FakeProjectManager(project), studio=studio)
     return resolve, timeline, items, mpi

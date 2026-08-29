@@ -80,7 +80,13 @@ def main() -> int:
         f"repo_root={repo_root}\n"
         f"python={python_path}\n"
         f"update_url={DEFAULT_UPDATE_URL}\n"
-        "auto_update=true\n",
+        "auto_update=true\n"
+        # Panel defaults. The UI rewrites this file whenever they change.
+        "output_dir=\n"
+        "quality=better\n"
+        "upscale=true\n"
+        "interpolate=true\n"
+        "base_hold=0\n",
         encoding="utf-8",
     )
 

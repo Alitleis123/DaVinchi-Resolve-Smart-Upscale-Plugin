@@ -23,11 +23,13 @@ def _read_version(repo_root: Path) -> str:
     version_path = repo_root / "VERSION"
     if not version_path.exists():
         return "0.0.0"
-    return version_path.read_text(encoding="utf-8").strip() or "0.0.0"
+    # utf-8-sig: PowerShell writes VERSION with a BOM, which is not whitespace
+    # and would otherwise survive .strip() and break _parse_version.
+    return version_path.read_text(encoding="utf-8-sig").strip() or "0.0.0"
 
 
 def _parse_version(value: str) -> tuple[int, int, int]:
-    clean = (value or "").strip().lstrip("v")
+    clean = (value or "").lstrip("\ufeff").strip().lstrip("v")
     parts = clean.split(".")
     nums: list[int] = []
     for p in parts[:3]:
@@ -42,7 +44,7 @@ def _parse_version(value: str) -> tuple[int, int, int]:
 
 def _download_json(url: str, timeout: int) -> dict:
     with urllib.request.urlopen(url, timeout=timeout) as resp:
-        raw = resp.read().decode("utf-8")
+        raw = resp.read().decode("utf-8-sig")
     data = json.loads(raw)
     if not isinstance(data, dict):
         raise RuntimeError("Update metadata must be a JSON object.")
