@@ -2,10 +2,10 @@
   "version": "0.3.0",
   "macos": {
     "url": "https://github.com/Alitleis123/Eternal2x.com/releases/download/v0.3.0/eternal2x-mac.zip",
-    "sha256": "227e04c04efb4cec6a9880bff2476f158f67547635f91cdb88b80fbf4eb17a73"
+    "sha256": "a2fd171161df6cbf018cd3bbf2a541b0b42f1bc7efd9563e5612e5be1771e579"
   },
   "windows": {
     "url": "https://github.com/Alitleis123/Eternal2x.com/releases/download/v0.3.0/eternal2x-win.zip",
-    "sha256": "4eaad435336aed9beafc711c2fed494ca9c23fb949144b01e3eb917f6c29a36f"
+    "sha256": "83344093eb655b56219096d718f2f2a791ee08d6bb48b4f049fd8e90b16b9480"
   }
 }

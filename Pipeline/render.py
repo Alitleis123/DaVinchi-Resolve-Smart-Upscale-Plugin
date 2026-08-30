@@ -227,9 +227,24 @@ def render_plan(
         buckets[i].append(p - i)
 
     cap = _open(source)
-    writer: Optional[cv2.VideoWriter] = None
-    written = 0
-    out_w = out_h = 0
+    state = {"writer": None, "written": 0, "width": 0, "height": 0}
+
+    def emit(frame: np.ndarray) -> None:
+        """Upscale if asked, then write one output frame."""
+        if factor > 1:
+            frame = upscale(frame, factor)
+        state["height"], state["width"] = frame.shape[:2]
+        if is_sequence:
+            cv2.imwrite(str(output / f"frame_{state['written']:06d}.png"), frame)
+        else:
+            if state["writer"] is None:
+                state["writer"] = _writer(output, (state["width"], state["height"]),
+                                          plan.fps)
+            state["writer"].write(frame)
+        state["written"] += 1
+        if progress and plan.source_frames:
+            progress("Rendering",
+                     min(1.0, state["written"] / float(plan.source_frames)))
 
     try:
         frames = _iter_plan_frames(cap, plan.output_indices)
@@ -253,43 +268,23 @@ def render_plan(
                     # nothing is synthesised.
                     produced = [(prev if t < 0.5 else curr).copy() for t in times]
                 for frame in produced:
-                    frame = upscale(frame, factor) if factor > 1 else frame
-                    if writer is None and not is_sequence:
-                        out_h, out_w = frame.shape[:2]
-                        writer = _writer(output, (out_w, out_h), plan.fps)
-                    if is_sequence:
-                        out_h, out_w = frame.shape[:2]
-                        cv2.imwrite(str(output / f"frame_{written:06d}.png"), frame)
-                    else:
-                        writer.write(frame)
-                    written += 1
-                    if progress and plan.source_frames:
-                        progress("Rendering", min(1.0, written / float(plan.source_frames)))
+                    emit(frame)
             prev = curr
             index += 1
 
-        # A single-drawing plan, or trailing frames the buckets did not cover.
-        while written < plan.source_frames:
-            frame = upscale(prev, factor) if factor > 1 else prev
-            if writer is None and not is_sequence:
-                out_h, out_w = frame.shape[:2]
-                writer = _writer(output, (out_w, out_h), plan.fps)
-            if is_sequence:
-                out_h, out_w = frame.shape[:2]
-                cv2.imwrite(str(output / f"frame_{written:06d}.png"), frame)
-            else:
-                writer.write(frame)
-            written += 1
+        # A single-drawing plan, or the trailing hold the buckets do not cover.
+        while state["written"] < plan.source_frames:
+            emit(prev)
     finally:
         cap.release()
-        if writer is not None:
-            writer.release()
+        if state["writer"] is not None:
+            state["writer"].release()
 
     return RenderResult(
         output=output,
-        frames_written=written,
-        width=out_w,
-        height=out_h,
+        frames_written=state["written"],
+        width=state["width"],
+        height=state["height"],
         fps=plan.fps,
         is_sequence=is_sequence,
     )
