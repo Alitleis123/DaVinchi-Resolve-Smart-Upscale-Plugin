@@ -313,3 +313,33 @@ def test_repeated_update_is_idempotent(http_server, repo, capsys):
 
 def test_platform_key_is_one_of_the_published_keys():
     assert ru._detect_platform_key() in {"windows", "macos", "linux"}
+
+
+def test_a_download_that_404s_does_not_traceback(http_server, repo, capsys):
+    """latest.json can advertise a release before the files are uploaded."""
+    base, www = http_server
+    url = publish_meta(www, base, {
+        "version": "9.9.9",
+        "windows": {"url": f"{base}/missing.zip", "sha256": ""},
+        "macos": {"url": f"{base}/missing.zip", "sha256": ""},
+        "linux": {"url": f"{base}/missing.zip", "sha256": ""},
+    })
+
+    assert run(["--meta-url", url, "--repo-root", str(repo)]) == 1
+    assert "Could not download the update" in capsys.readouterr().out
+    assert repo.joinpath("VERSION").read_text().strip() == "0.2.0"
+
+
+def test_a_corrupt_package_is_reported(http_server, repo, capsys):
+    base, www = http_server
+    (www / "broken.zip").write_bytes(b"this is not a zip file")
+    url = publish_meta(www, base, {
+        "version": "9.9.9",
+        "windows": {"url": f"{base}/broken.zip", "sha256": ""},
+        "macos": {"url": f"{base}/broken.zip", "sha256": ""},
+        "linux": {"url": f"{base}/broken.zip", "sha256": ""},
+    })
+
+    assert run(["--meta-url", url, "--repo-root", str(repo)]) == 1
+    assert "could not be opened" in capsys.readouterr().out
+    assert repo.joinpath("Stages/motion_score.py").read_text() == "# old stage\n"

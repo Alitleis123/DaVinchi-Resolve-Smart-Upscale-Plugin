@@ -159,8 +159,14 @@ def main() -> int:
         temp_dir = Path(td)
         zip_path = temp_dir / "update.zip"
         extract_dir = temp_dir / "extract"
-        with urllib.request.urlopen(download_url, timeout=max(args.timeout, 20)) as resp:
-            zip_path.write_bytes(resp.read())
+        try:
+            with urllib.request.urlopen(download_url, timeout=max(args.timeout, 20)) as resp:
+                zip_path.write_bytes(resp.read())
+        except Exception as exc:
+            # A published latest.json can point at a release that is not up
+            # yet. That is a bad download, not a reason to show a traceback.
+            print(f"Could not download the update: {exc}")
+            return 1
 
         if expected_sha:
             actual_sha = _sha256(zip_path).lower()
@@ -169,8 +175,12 @@ def main() -> int:
                 return 1
 
         extract_dir.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            zf.extractall(extract_dir)
+        try:
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                zf.extractall(extract_dir)
+        except (zipfile.BadZipFile, OSError) as exc:
+            print(f"The update package could not be opened: {exc}")
+            return 1
 
         payload_root = _find_payload_root(extract_dir)
         _apply_payload(payload_root, repo_root)
