@@ -220,11 +220,42 @@ def test_analyse_runs_the_stage_in_analyse_mode(lua, direct):
     assert "--analyse" in cmd
 
 
-def test_analyse_does_not_run_in_the_background(lua, direct):
-    """It has to finish before the panel reads the result."""
+def test_analyse_also_runs_in_the_background(lua, direct):
+    """Analysis is quick on a short clip but slow on a long one, and Resolve
+    must not freeze for it either."""
     H = load(lua, ui_script(direct))
     H.click("AnalyseBtn")
-    assert not H.last_command().rstrip().endswith("&")
+    cmd = H.last_command()
+    assert cmd.rstrip().endswith("&") or "start " in cmd
+    assert "--status-file" in cmd
+
+
+def test_analyse_result_arrives_through_the_status_file(lua, direct):
+    H = load(lua, ui_script(direct))
+    H.click("AnalyseBtn")
+    write_status(direct, fraction=1.0, done=True, ok=True,
+                 message="48 frames, 24 unique drawings. Animated on 2s.")
+    H.click("RefreshStatusBtn")
+    assert "24 unique drawings" in H.widgets["AnalysisLabel"].Text
+    assert "Analysis complete" in H.status()
+
+
+def test_a_failed_analyse_says_so_in_the_panel(lua, direct):
+    H = load(lua, ui_script(direct))
+    H.click("AnalyseBtn")
+    write_status(direct, done=True, ok=False, message="The clip's media is missing.")
+    H.click("RefreshStatusBtn")
+    assert "media is missing" in H.widgets["AnalysisLabel"].Text
+    assert H.enabled("AnalyseBtn")
+
+
+def test_analyse_never_imports_anything(lua, direct):
+    H = load(lua, ui_script(direct))
+    H.click("AnalyseBtn")
+    write_status(direct, fraction=1.0, done=True, ok=True, message="On 2s.",
+                 import_path="/tmp/should-not-be-imported.mp4")
+    H.click("RefreshStatusBtn")
+    assert H.imported_count() == 0, "Analyse imported a clip"
 
 
 def test_smooth_runs_in_the_background(lua, direct):

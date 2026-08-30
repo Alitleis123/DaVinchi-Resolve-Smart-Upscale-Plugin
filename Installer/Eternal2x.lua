@@ -365,6 +365,7 @@ items.FormatCombo.CurrentIndex = index_of(FORMATS, FORMAT)
 local SOURCE_PATH = nil
 local RUNNING = false
 local IMPORTED = false
+local ANALYSING = false
 
 local function set_status(msg)
     items.Status.Text = msg or ""
@@ -467,10 +468,20 @@ local function apply_status(st)
         set_busy(false)
         if not st.ok then
             set_progress(0, nil)
-            set_status(st.message ~= "" and st.message or "Failed. See the console for details.")
+            local why = st.message ~= "" and st.message
+                or "Failed. See the console for details."
+            if ANALYSING then items.AnalysisLabel.Text = why end
+            ANALYSING = false
+            set_status(why)
             return true
         end
         set_progress(1.0, "Finished")
+        if ANALYSING then
+            ANALYSING = false
+            if st.message ~= "" then items.AnalysisLabel.Text = st.message end
+            set_status("Analysis complete.")
+            return true
+        end
         if st.import_path ~= "" and not IMPORTED then
             IMPORTED = true
             local ok, notes = import_result(st.import_path)
@@ -538,18 +549,17 @@ function win.On.AnalyseBtn.Clicked(ev)
         set_status(items.SourceLabel.Text)
         return
     end
-    set_status("Analysing...")
+    -- Backgrounded like the render: analysis is quick on a short clip but can
+    -- take tens of seconds on a long one, and Resolve must not freeze for it.
     clear_status()
-    run_blocking("Stages.resolve_smooth", current_args(" --analyse"))
-    local st = read_status()
-    if st and st.message ~= "" then
-        items.AnalysisLabel.Text = st.message
-        set_status(st.ok and "Analysis complete." or st.message)
-    else
-        items.AnalysisLabel.Text = "Could not analyse the clip."
-        set_status("Analysis failed. See the console for details.")
-    end
-    set_progress(0, nil)
+    ANALYSING = true
+    IMPORTED = false
+    set_busy(true)
+    set_progress(0.01, "Starting")
+    set_status("Analysing. Resolve stays usable while this runs.")
+    items.AnalysisLabel.Text = "Analysing..."
+    run_background("Stages.resolve_smooth", current_args(" --analyse"))
+    start_polling()
 end
 
 function win.On.SmoothBtn.Clicked(ev)
@@ -563,6 +573,7 @@ function win.On.SmoothBtn.Clicked(ev)
     end
     clear_status()
     IMPORTED = false
+    ANALYSING = false
     set_busy(true)
     set_progress(0.01, "Starting")
     set_status("Working. Resolve stays usable while this runs.")
@@ -581,6 +592,8 @@ end
 
 function win.On.CancelBtn.Clicked(ev)
     clear_status()
+    ANALYSING = false
+    IMPORTED = false
     set_busy(false)
     set_progress(0, nil)
     set_status("Ready.")

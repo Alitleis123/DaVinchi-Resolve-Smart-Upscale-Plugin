@@ -93,6 +93,7 @@ def test_analyse_reports_the_real_pattern(installation):
     """Click Analyse, run the real command, read the real result back."""
     H, _src = installation(holds=(2,) * 12)
     H.click("AnalyseBtn")
+    finish(H)
 
     summary = H.widgets["AnalysisLabel"].Text
     assert "12 unique drawings" in summary, f"panel showed: {summary!r}"
@@ -103,12 +104,14 @@ def test_analyse_reports_the_real_pattern(installation):
 def test_analyse_detects_threes(installation):
     H, _src = installation(holds=(3,) * 8)
     H.click("AnalyseBtn")
+    finish(H)
     assert "on 3s" in H.widgets["AnalysisLabel"].Text
 
 
 def test_analyse_changes_nothing_on_disk(installation):
     H, src = installation()
     H.click("AnalyseBtn")
+    finish(H)
     assert outputs(src) == []
     assert H.imported_count() == 0
 
@@ -116,6 +119,7 @@ def test_analyse_changes_nothing_on_disk(installation):
 def test_footage_with_nothing_to_do_is_reported_in_the_panel(installation):
     H, _src = installation(holds=(1,) * 20)
     H.click("AnalyseBtn")
+    finish(H)
     assert "already on 1s" in H.widgets["AnalysisLabel"].Text
 
 
@@ -184,6 +188,7 @@ def test_forcing_a_hold_pattern_reaches_the_render(installation):
     H, _src = installation(holds=(2,) * 12)
     H.set_combo("HoldCombo", 3)          # On 3s
     H.click("AnalyseBtn")
+    finish(H)
     assert "on 3s" in H.widgets["AnalysisLabel"].Text
 
 
