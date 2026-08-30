@@ -335,7 +335,7 @@ def test_refresh_picks_up_the_selection(lua, direct):
 
 def write_status(root: Path, **fields):
     payload = {"stage": "Rendering", "fraction": 0.5, "message": "",
-               "done": False, "ok": False, "updated": 0}
+               "import_path": "", "done": False, "ok": False, "updated": 0}
     payload.update(fields)
     (root / ".eternal2x_status.json").write_text(json.dumps(payload))
 
@@ -474,3 +474,86 @@ def test_a_background_run_does_not_block(lua, direct):
     H.click("SmoothBtn")
     assert not H.enabled("SmoothBtn"), "the panel should show it is busy"
     assert "Resolve stays usable" in H.status()
+
+
+# --------------------------------------------------------------------------
+# the panel imports the finished render itself
+# --------------------------------------------------------------------------
+
+def test_python_is_given_the_clip_path_directly(lua, direct):
+    """The stage must not have to reconnect to Resolve.
+
+    A Python process spawned from Lua can only import DaVinciResolveScript if
+    the user has external scripting configured. The panel already holds a
+    connection, so it passes the path down and does the import itself.
+    """
+    H = load(lua, ui_script(direct), clip="/media/shot.mov")
+    H.click("AnalyseBtn")
+    assert "--video" in H.last_command()
+    assert "/media/shot.mov" in H.last_command()
+
+
+def test_a_finished_render_is_imported_and_appended(lua, direct):
+    H = load(lua, ui_script(direct))
+    H.click("SmoothBtn")
+    write_status(direct, fraction=1.0, done=True, ok=True, message="Rendered.",
+                 import_path="/tmp/out/frame_000000.png")
+    H.click("RefreshStatusBtn")
+
+    assert H.imported_count() == 1
+    assert H.imported_at(1) == "/tmp/out/frame_000000.png"
+    assert H.appended == 1
+    assert "added to the timeline" in H.status()
+
+
+def test_super_scale_is_applied_with_a_value_resolve_accepts(lua, direct):
+    H = load(lua, ui_script(direct))
+    H.click("SmoothBtn")
+    write_status(direct, fraction=1.0, done=True, ok=True, message="Rendered.",
+                 import_path="/tmp/out.mp4")
+    H.click("RefreshStatusBtn")
+    assert H.property_of("Super Scale") == "2"
+
+
+def test_upscale_unchecked_leaves_super_scale_alone(lua, direct):
+    H = load(lua, ui_script(direct))
+    H.set_checkbox("UpscaleCB", False)
+    H.click("SmoothBtn")
+    write_status(direct, fraction=1.0, done=True, ok=True, message="Rendered.",
+                 import_path="/tmp/out.mp4")
+    H.click("RefreshStatusBtn")
+    assert H.property_of("Super Scale") is None
+
+
+def test_a_refused_import_still_tells_the_user_where_the_render_is(lua, direct):
+    H = load(lua, ui_script(direct))
+    H.import_works = False
+    H.click("SmoothBtn")
+    write_status(direct, fraction=1.0, done=True, ok=True, message="Rendered.",
+                 import_path="/tmp/out.mp4")
+    H.click("RefreshStatusBtn")
+
+    status = H.status()
+    assert "would not import" in status
+    assert "drag it in" in status.lower()
+    assert H.enabled("SmoothBtn"), "the panel stayed busy after a failed import"
+
+
+def test_the_import_happens_once_not_on_every_poll(lua, direct):
+    """Polling repeatedly must not append the clip again and again."""
+    H = load(lua, ui_script(direct))
+    H.click("SmoothBtn")
+    write_status(direct, fraction=1.0, done=True, ok=True, message="Rendered.",
+                 import_path="/tmp/out.mp4")
+    for _ in range(4):
+        H.click("RefreshStatusBtn")
+    assert H.imported_count() == 1
+    assert H.appended == 1
+
+
+def test_a_failed_run_imports_nothing(lua, direct):
+    H = load(lua, ui_script(direct))
+    H.click("SmoothBtn")
+    write_status(direct, done=True, ok=False, message="The clip's media is missing.")
+    H.click("RefreshStatusBtn")
+    assert H.imported_count() == 0

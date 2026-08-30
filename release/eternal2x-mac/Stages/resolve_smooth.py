@@ -32,6 +32,9 @@ class StatusFile:
         self.stage = ""
         self.fraction = 0.0
         self.message = ""
+        # What the panel should hand to Resolve's ImportMedia. For an image
+        # sequence that is the first frame, not the folder.
+        self.import_path = ""
 
     def write(self, *, done: bool = False, ok: bool = False,
               message: Optional[str] = None) -> None:
@@ -45,6 +48,7 @@ class StatusFile:
             "stage": self.stage,
             "fraction": round(self.fraction, 4),
             "message": self.message,
+            "import_path": self.import_path,
             "done": done,
             "ok": ok,
             "updated": time.time(),
@@ -225,10 +229,22 @@ def main() -> int:
     print(f"Wrote {result.frames_written} frames at {result.fps:.3f} fps.")
     summary["render"] = result.to_dict()
 
+    # Resolve imports an image sequence from its first frame, not its folder.
+    if result.is_sequence:
+        frames = sorted(result.output.glob("*.png"))
+        status.import_path = str(frames[0]) if frames else str(result.output)
+    else:
+        status.import_path = str(result.output)
+
     if resolve is None:
-        print("Done. Import the result into Resolve when you are ready.")
+        # The panel has its own Resolve connection and finishes the import from
+        # there, which avoids depending on external scripting being enabled.
+        print(f"Rendered to: {result.output}")
         summary["ok"] = True
-        status.write(done=True, ok=True, message=f"Rendered to {result.output.name}.")
+        summary["import_path"] = status.import_path
+        status.write(done=True, ok=True,
+                     message=f"Rendered {plan.unique_drawings} drawings into "
+                             f"{result.frames_written} smooth frames.")
         if args.json:
             print(json.dumps(summary))
         return 0

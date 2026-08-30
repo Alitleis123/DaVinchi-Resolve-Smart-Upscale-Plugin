@@ -37,7 +37,17 @@ shell command the plugin would run — including running that command for real t
 confirm it resolves the `Stages` package.
 
 `tests/test_installer.py` performs a full install into a temporary HOME, so the
-install → launch → click chain is covered end to end.
+install → launch → click chain is covered.
+
+`tests/test_end_to_end.py` goes further and really runs the commands. The Lua
+builds a shell command, the shell runs Python, Python renders a clip and writes
+a status file, and the panel reads it all back and imports the result. Set
+`H.real_execute = true` on the harness to opt into that.
+
+Note that the panel does the Resolve import itself rather than letting the
+Python process do it. A process spawned from Lua can only import
+`DaVinciResolveScript` if the user has external scripting configured, whereas
+the panel already holds a connection.
 
 ## Videos
 
@@ -63,4 +73,7 @@ the fallback path rather than the engine.
 | `test_resolve_update.py` | auto-update over a real local HTTP server |
 | `test_installer.py` | install locations, config contract, installer parity |
 | `test_lua_ui.py` | the panel: handlers, commands, progress, persistence |
+| `test_edge_cases.py` | tiny clips, static shots, odd rates and sizes, broken input |
+| `test_quality.py` | rebuilt frames measured against the drawing that should be there |
+| `test_end_to_end.py` | install, open panel, click, render, import, for real |
 | `test_packaging.py` | release parity, update metadata, encodings, docs |

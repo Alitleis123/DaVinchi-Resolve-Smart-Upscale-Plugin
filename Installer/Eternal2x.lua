@@ -212,6 +212,7 @@ local function read_status()
         stage    = s:match('"stage"%s*:%s*"(.-)"') or "",
         message  = s:match('"message"%s*:%s*"(.-)"') or "",
         fraction = tonumber(s:match('"fraction"%s*:%s*([%-%d%.eE]+)')) or 0,
+        import_path = s:match('"import_path"%s*:%s*"(.-)"') or "",
         done     = s:match('"done"%s*:%s*(%a+)') == "true",
         ok       = s:match('"ok"%s*:%s*(%a+)') == "true",
     }
@@ -363,6 +364,7 @@ items.FormatCombo.CurrentIndex = index_of(FORMATS, FORMAT)
 
 local SOURCE_PATH = nil
 local RUNNING = false
+local IMPORTED = false
 
 local function set_status(msg)
     items.Status.Text = msg or ""
@@ -405,6 +407,9 @@ end
 
 local function current_args(extra)
     local args = ""
+    if SOURCE_PATH and SOURCE_PATH ~= "" then
+        args = args .. " --video " .. shell_quote(SOURCE_PATH)
+    end
     local quality = QUALITIES[(items.QualityCombo.CurrentIndex or 1) + 1] or "better"
     args = args .. " --quality " .. quality
     local hold = HOLDS[(items.HoldCombo.CurrentIndex or 0) + 1] or 0
@@ -420,17 +425,61 @@ local function current_args(extra)
     return args .. (extra or "")
 end
 
+-- The render is finished on disk; bring it in from here rather than from the
+-- Python process, which would need Resolve's external scripting enabled.
+local function import_result(path)
+    if not path or path == "" then return false, "Nothing to import." end
+    local resolve, err = get_resolve()
+    if not resolve then return false, err end
+    local project = resolve:GetProjectManager():GetCurrentProject()
+    if not project then return false, "No project is open." end
+    if not project.GetMediaPool then return false, "Could not reach the media pool." end
+    local pool = project:GetMediaPool()
+    if not pool or not pool.ImportMedia then
+        return false, "This Resolve version cannot import from a script."
+    end
+
+    local ok, items = pcall(function() return pool:ImportMedia({ path }) end)
+    if not ok or not items or type(items) ~= "table" or #items == 0 then
+        return false, "Resolve would not import " .. basename(path)
+    end
+    local mpi = items[1]
+
+    local notes = "Imported " .. basename(path)
+    if DO_UPSCALE and mpi.SetClipProperty then
+        -- Resolve accepts 1, 2, 3, 4 or Auto here. "2x" is rejected.
+        local scaled = pcall(function() return mpi:SetClipProperty("Super Scale", "2") end)
+        notes = notes .. (scaled and ", upscaled 2x" or ", upscale not applied")
+    end
+    if pool.AppendToTimeline then
+        local appended = pcall(function() return pool:AppendToTimeline({ mpi }) end)
+        notes = notes .. (appended and ", added to the timeline."
+                                    or ". Drag it onto your timeline.")
+    end
+    return true, notes
+end
+
 local function apply_status(st)
     if not st then return false end
     set_progress(st.fraction, st.stage)
     if st.message ~= "" then set_status(st.message) end
     if st.done then
         set_busy(false)
-        if st.ok then
-            set_progress(1.0, "Finished")
-        else
+        if not st.ok then
             set_progress(0, nil)
             set_status(st.message ~= "" and st.message or "Failed. See the console for details.")
+            return true
+        end
+        set_progress(1.0, "Finished")
+        if st.import_path ~= "" and not IMPORTED then
+            IMPORTED = true
+            local ok, notes = import_result(st.import_path)
+            if ok then
+                set_status(st.message .. " " .. notes)
+            else
+                set_status(st.message .. " " .. notes ..
+                           " The render is finished, so you can drag it in.")
+            end
         end
         return true
     end
@@ -513,6 +562,7 @@ function win.On.SmoothBtn.Clicked(ev)
         return
     end
     clear_status()
+    IMPORTED = false
     set_busy(true)
     set_progress(0.01, "Starting")
     set_status("Working. Resolve stays usable while this runs.")

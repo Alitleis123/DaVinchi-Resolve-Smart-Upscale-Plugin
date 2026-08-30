@@ -191,10 +191,13 @@ def test_no_selected_clip_is_reported(monkeypatch, capsys):
 # --------------------------------------------------------------------------
 
 def test_video_flag_bypasses_resolve_entirely(make_anime, monkeypatch, capsys, tmp_path):
+    """This is the path the panel uses: it passes the clip and imports the
+    result itself, so the stage never needs its own Resolve connection."""
     src = make_anime(holds=(2,) * 8)
     assert run(monkeypatch, ["--video", str(src), "--output-dir", str(tmp_path / "o")]) == 0
     out = capsys.readouterr().out
-    assert "Import the result into Resolve when you are ready" in out
+    assert "Rendered to:" in out
+    assert "Could not import DaVinciResolveScript" not in out
 
 
 def test_forced_base_hold_is_honoured(make_anime, monkeypatch, capsys, tmp_path):

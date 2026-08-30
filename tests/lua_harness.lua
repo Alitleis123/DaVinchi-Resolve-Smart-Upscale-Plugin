@@ -10,7 +10,8 @@ H.commands = {}   -- every shell command the script ran, in order
 H.prints = {}     -- every print() line
 H.widgets = nil     -- widget table, keyed by ID
 H.window = nil
-H.exit_code = 0   -- what os.execute reports back
+H.exit_code = 0      -- what os.execute reports back
+H.real_execute = false  -- when true, commands are genuinely run
 
 -- Widgets -----------------------------------------------------------------
 
@@ -106,6 +107,11 @@ end
 -- Resolve stub ------------------------------------------------------------
 -- Mirrors the shape Eternal2x.lua walks: project -> timeline -> item -> mpi.
 
+H.imported = {}         -- paths handed to ImportMedia
+H.appended = 0          -- how many clips reached the timeline
+H.clip_properties = {}  -- properties set on imported clips
+H.import_works = true   -- flip to false to simulate a build that refuses
+
 function H.make_resolve(clip_file_path)
     local mpi = {
         GetClipProperty = function(_self)
@@ -117,9 +123,47 @@ function H.make_resolve(clip_file_path)
         GetCurrentVideoItem = function(_self) return item end,
         GetSelectedItems = function(_self) return { item } end,
     }
-    local project = { GetCurrentTimeline = function(_self) return timeline end }
+    local pool = {
+        ImportMedia = function(_self, paths)
+            if not H.import_works then return {} end
+            local made = {}
+            for _, path in ipairs(paths) do
+                table.insert(H.imported, path)
+                table.insert(made, {
+                    SetClipProperty = function(_s, k, v)
+                        H.clip_properties[k] = v
+                        return true
+                    end,
+                })
+            end
+            return made
+        end,
+        AppendToTimeline = function(_self, clips)
+            H.appended = H.appended + #clips
+            return clips
+        end,
+    }
+    local project = {
+        GetCurrentTimeline = function(_self) return timeline end,
+        GetMediaPool = function(_self) return pool end,
+    }
     local pm = { GetCurrentProject = function(_self) return project end }
     return { GetProjectManager = function(_self) return pm end }
+end
+
+-- Execution ---------------------------------------------------------------
+
+-- Commands are recorded, and optionally really run. Running them for real is
+-- what makes an end-to-end test end-to-end: the panel builds a command string,
+-- the shell runs it, and the panel reads back what it produced.
+function H.make_execute(real_execute)
+    return function(cmd)
+        table.insert(H.commands, cmd)
+        if H.real_execute then
+            return real_execute(cmd)
+        end
+        return H.exit_code == 0, "exit", H.exit_code
+    end
 end
 
 -- Loading -----------------------------------------------------------------
@@ -141,10 +185,7 @@ function H.load(script_path, clip_file_path)
     local real_execute = os.execute
     local real_print = print
 
-    os.execute = function(cmd)
-        table.insert(H.commands, cmd)
-        return H.exit_code == 0, "exit", H.exit_code
-    end
+    os.execute = H.make_execute(real_execute)
     print = function(...)
         local parts = {}
         for i = 1, select("#", ...) do
@@ -171,10 +212,7 @@ function H.fire(id, event)
     end
     local real_execute = os.execute
     local real_print = print
-    os.execute = function(cmd)
-        table.insert(H.commands, cmd)
-        return H.exit_code == 0, "exit", H.exit_code
-    end
+    os.execute = H.make_execute(real_execute)
     print = function(...) end
     local ok, err = pcall(handler, {})
     os.execute = real_execute
@@ -187,10 +225,7 @@ function H.click(id)
     if not handler then error("no Clicked handler for " .. tostring(id)) end
     local real_execute = os.execute
     local real_print = print
-    os.execute = function(cmd)
-        table.insert(H.commands, cmd)
-        return H.exit_code == 0, "exit", H.exit_code
-    end
+    os.execute = H.make_execute(real_execute)
     print = function(...) end
     local ok, err = pcall(handler, {})
     os.execute = real_execute
@@ -225,6 +260,9 @@ function H.enabled(id)
     return w ~= nil and w.Enabled ~= false
 end
 
+function H.imported_count() return #H.imported end
+function H.imported_at(i) return H.imported[i] end
+function H.property_of(key) return H.clip_properties[key] end
 function H.command_count() return #H.commands end
 function H.command_at(i) return H.commands[i] end
 function H.last_command() return H.commands[#H.commands] end
