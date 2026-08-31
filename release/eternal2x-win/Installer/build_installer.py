@@ -15,6 +15,8 @@ so buyers can double-click it alongside the plugin folder contents.
 
 from __future__ import annotations
 
+import importlib.util
+
 import subprocess
 import sys
 from pathlib import Path
@@ -28,9 +30,9 @@ def main() -> int:
         print(f"Missing installer script: {script}")
         return 1
 
-    try:
-        import PyInstaller  # noqa: F401
-    except ImportError:
+    # An availability check, not a use, so ask the import system directly
+    # rather than importing a name we never touch.
+    if importlib.util.find_spec("PyInstaller") is None:
         print("PyInstaller is not installed.")
         print("Run:  pip install pyinstaller")
         return 1

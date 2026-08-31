@@ -64,7 +64,10 @@ def direct(tmp_path, repo_root):
 
 
 def load(lua, script: Path, clip="/media/shot.mov"):
-    H = lua.eval(f'dofile("{HARNESS}")')
+    # Forward slashes: a Windows path interpolated into Lua source turns
+    # backslashes into escape sequences, and "D:\a\..." fails to parse.
+    # Lua accepts forward slashes on Windows.
+    H = lua.eval(f'dofile("{HARNESS.as_posix()}")')
     H.load(str(script), clip)
     return H
 

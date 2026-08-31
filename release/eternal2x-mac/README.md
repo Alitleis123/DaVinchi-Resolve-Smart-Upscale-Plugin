@@ -1,5 +1,7 @@
 # Eternal2x
 
+[![CI](https://github.com/Alitleis123/Eternal2x.com/actions/workflows/ci.yml/badge.svg)](https://github.com/Alitleis123/Eternal2x.com/actions/workflows/ci.yml)
+
 Smooth 2x for hand-drawn animation, inside DaVinci Resolve Studio.
 
 Anime is drawn on 2s or 3s: the artist draws twelve pictures a second and each
@@ -141,14 +143,29 @@ before being applied. Restart Resolve afterwards.
 runs the Lua panel under an embedded Lua runtime, so buttons, commands and the
 full render pipeline are all covered headlessly. See `tests/README.md`.
 
-To cut a release:
+Tests run on Linux, macOS and Windows against Python 3.9 and 3.12.
+
+To cut a release, bump `VERSION` and push a matching tag:
 
 ```
-python Installer/build_release.py
+git tag v0.3.1 && git push origin v0.3.1
 ```
 
-This rebuilds the release folders, zips them and writes the checksums into
-`update/latest.json`.
+The release workflow builds the archives, publishes them, checks the published
+downloads really resolve, and refreshes `update/latest.json`. The tag is derived
+from `VERSION` in one place, so the archives, the tag and the update feed cannot
+drift apart.
+
+To build locally without publishing:
+
+```
+python Installer/build_release.py            # build the folders and zips
+python Installer/build_release.py --publish  # build, tag, upload, verify
+python Installer/build_release.py --verify   # check the live feed is sound
+```
+
+Archives are byte reproducible, so rebuilding a tag on any machine gives the
+same checksums as the published ones.
 
 ## Questions
 

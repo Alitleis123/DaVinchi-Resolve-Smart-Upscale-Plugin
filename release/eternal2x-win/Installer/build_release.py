@@ -1,9 +1,13 @@
-"""Regenerate the release folders and refresh update/latest.json.
+"""Build, publish and verify a release.
 
-Run this before publishing. It copies the runtime files into
-release/eternal2x-mac and release/eternal2x-win, zips them, and writes the
-zip checksums into the update metadata so the auto-updater can verify what it
-downloads.
+    python Installer/build_release.py            build the folders and zips
+    python Installer/build_release.py --publish  build, tag, upload, verify
+    python Installer/build_release.py --verify   check the live feed is sound
+
+The tag is derived from VERSION in one place, `release_tag()`, and both the
+download URLs and the git tag come from it. They used to be decided separately,
+which is how 0.2.0 shipped a latest.json pointing at a v0.2.0 tag that did not
+exist, leaving every download link a 404.
 """
 
 from __future__ import annotations
@@ -12,6 +16,8 @@ import argparse
 import hashlib
 import json
 import shutil
+import subprocess
+import zipfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -23,12 +29,90 @@ PAYLOAD = ["Pipeline", "Stages", "Installer", "VERSION", "README.md",
 SKIP_DIRS = {"__pycache__", ".pytest_cache"}
 SKIP_SUFFIXES = {".pyc", ".pyo"}
 
-RELEASE_URL = ("https://github.com/Alitleis123/Eternal2x.com/releases/download/"
-               "v{version}/{name}.zip")
+REPO = "Alitleis123/Eternal2x.com"
+RELEASE_URL = "https://github.com/" + REPO + "/releases/download/{tag}/{name}.zip"
+
+
+def release_tag(version: str) -> str:
+    """The one place the tag is decided. Everything else derives from this."""
+    return f"v{version}"
 
 
 def read_version() -> str:
     return (REPO_ROOT / "VERSION").read_text(encoding="utf-8-sig").strip()
+
+
+def build_metadata(version: str, checksums: dict) -> dict:
+    tag = release_tag(version)
+    meta = {"version": version}
+    for name, key in PLATFORMS.items():
+        meta[key] = {
+            "url": RELEASE_URL.format(tag=tag, name=name),
+            "sha256": checksums[name],
+        }
+    return meta
+
+
+def write_metadata(meta: dict) -> Path:
+    path = REPO_ROOT / "update" / "latest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Plain UTF-8, no BOM: the updater decodes this straight off the network.
+    path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def verify_feed(meta: dict) -> bool:
+    """Download what the feed advertises and check it is really there.
+
+    This is the check that would have caught the 0.2.0 release, where the
+    advertised URL 404ed because the tag was written without its v prefix.
+    """
+    import urllib.error
+    import urllib.request
+
+    ok = True
+    for key in ("macos", "windows"):
+        url = meta[key]["url"]
+        try:
+            with urllib.request.urlopen(url, timeout=60) as response:
+                payload = response.read()
+        except (urllib.error.URLError, OSError) as exc:
+            print(f"  {key}: FAILED, {exc}")
+            ok = False
+            continue
+        actual = hashlib.sha256(payload).hexdigest()
+        if actual != meta[key]["sha256"]:
+            print(f"  {key}: checksum mismatch against the published file")
+            ok = False
+        else:
+            print(f"  {key}: reachable, checksum matches")
+    return ok
+
+
+def publish(version: str) -> bool:
+    """Create the GitHub release, with the tag derived from VERSION."""
+    tag = release_tag(version)
+    archives = [str(REPO_ROOT / "release" / f"{name}.zip") for name in PLATFORMS]
+    existing = subprocess.run(["gh", "release", "view", tag, "--repo", REPO],
+                              capture_output=True, text=True)
+    if existing.returncode == 0:
+        print(f"  {tag} already exists, uploading assets over it")
+        command = ["gh", "release", "upload", tag, "--repo", REPO, "--clobber", *archives]
+    else:
+        # Tag the commit being built, not whatever the default branch points at.
+        target = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
+                                text=True, cwd=REPO_ROOT).stdout.strip()
+        command = ["gh", "release", "create", tag, "--repo", REPO,
+                   "--title", f"Eternal2x {version}",
+                   "--notes", f"Eternal2x {version}.", *archives]
+        if target:
+            command[4:4] = ["--target", target]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"  publishing failed: {result.stderr.strip()}")
+        return False
+    print(f"  published {tag}")
+    return True
 
 
 def _copy(src: Path, dst: Path) -> None:
@@ -55,12 +139,34 @@ def build_folder(name: str) -> Path:
     return dest
 
 
+# A fixed timestamp for every entry. Without it the zip embeds file mtimes,
+# two builds of the same commit produce different checksums, and the sha256 in
+# update/latest.json can only be trusted if it came from the exact machine that
+# built the upload. With it, anyone can rebuild a tag and get the same bytes.
+ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+
+
 def zip_folder(folder: Path) -> Path:
+    """Zip a release folder reproducibly."""
     archive = folder.with_suffix(".zip")
     if archive.exists():
         archive.unlink()
-    shutil.make_archive(str(folder), "zip", root_dir=folder.parent,
-                        base_dir=folder.name)
+
+    # Sort by the archive entry name, not by Path. Path comparison is
+    # case-insensitive on Windows and case-sensitive elsewhere, so sorting
+    # paths would order the entries differently per platform and the archives
+    # would stop being reproducible across machines.
+    entries = sorted(
+        (f"{folder.name}/{path.relative_to(folder).as_posix()}", path)
+        for path in folder.rglob("*") if path.is_file()
+    )
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, path in entries:
+            info = zipfile.ZipInfo(name, date_time=ZIP_TIMESTAMP)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            # Regular file, 0644, so the archive does not carry local umask.
+            info.external_attr = (0o100644 & 0xFFFF) << 16
+            zf.writestr(info, path.read_bytes())
     return archive
 
 
@@ -72,35 +178,61 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build the Eternal2x release.")
     parser.add_argument("--no-zip", action="store_true",
                         help="Refresh the release folders without zipping.")
-    args = parser.parse_args()
+    parser.add_argument("--publish", action="store_true",
+                        help="Create the GitHub release and verify the feed.")
+    parser.add_argument("--verify", action="store_true",
+                        help="Only check that the published feed is reachable.")
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
 
     version = read_version()
-    print(f"Building Eternal2x {version}")
+    tag = release_tag(version)
 
-    meta = {"version": version}
-    for name, key in PLATFORMS.items():
+    if args.verify:
+        meta = json.loads((REPO_ROOT / "update" / "latest.json")
+                          .read_text(encoding="utf-8-sig"))
+        print(f"Verifying the feed for {meta['version']}")
+        return 0 if verify_feed(meta) else 1
+
+    print(f"Building Eternal2x {version}, tag {tag}")
+
+    checksums = {}
+    for name in PLATFORMS:
         folder = build_folder(name)
-        print(f"  {name}: {sum(1 for _ in folder.rglob('*') if _.is_file())} files")
+        count = sum(1 for item in folder.rglob("*") if item.is_file())
+        print(f"  {name}: {count} files")
         if args.no_zip:
             continue
         archive = zip_folder(folder)
-        meta[key] = {
-            "url": RELEASE_URL.format(version=version, name=name),
-            "sha256": sha256(archive),
-        }
-        print(f"  {archive.name}: {meta[key]['sha256'][:16]}...")
+        checksums[name] = sha256(archive)
+        print(f"  {archive.name}: {checksums[name][:16]}...")
 
-    if not args.no_zip:
-        meta_path = REPO_ROOT / "update" / "latest.json"
-        meta_path.parent.mkdir(parents=True, exist_ok=True)
-        # Plain UTF-8, no BOM: the updater decodes this over the network.
-        meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
-        print(f"Wrote {meta_path.relative_to(REPO_ROOT)}")
+    if args.no_zip:
+        return 0
 
+    meta = build_metadata(version, checksums)
+
+    if args.publish:
+        if not publish(version):
+            return 1
+        print("Verifying the published downloads")
+        if not verify_feed(meta):
+            print("The release is published but its downloads are not usable. "
+                  "update/latest.json was left untouched.")
+            return 1
+
+    path = write_metadata(meta)
+    print(f"Wrote {path.relative_to(REPO_ROOT)}")
+    if not args.publish:
+        print(f"Not published yet. Run with --publish, or tag the release {tag} "
+              "by hand, before this lands on main.")
     return 0
 
 

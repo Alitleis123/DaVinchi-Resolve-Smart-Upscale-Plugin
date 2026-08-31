@@ -106,11 +106,27 @@ def test_the_default_output_is_a_lossless_sequence(anime_in_resolve, monkeypatch
 
 @pytest.mark.parametrize("fmt,pattern", [("mp4", "*.mp4"), ("avi", "*.avi")])
 def test_single_file_formats_render(anime_in_resolve, monkeypatch, tmp_path, fmt, pattern):
+    """Decode the result back. A writer that opens but silently encodes
+    nothing, which happens when a platform is missing a codec, would
+    otherwise pass a file-size check."""
+    import cv2
+
     anime_in_resolve()
     out_dir = tmp_path / fmt
     assert run(monkeypatch, ["--format", fmt, "--output-dir", str(out_dir)]) == 0
+
     written = list(out_dir.glob(pattern))
     assert len(written) == 1 and written[0].stat().st_size > 0
+
+    cap = cv2.VideoCapture(str(written[0]))
+    decoded = 0
+    while True:
+        ok, _frame = cap.read()
+        if not ok:
+            break
+        decoded += 1
+    cap.release()
+    assert decoded == 24, f"{fmt} wrote a file that decodes to {decoded} frames, not 24"
 
 
 def test_super_scale_is_applied_to_the_imported_clip(anime_in_resolve, monkeypatch,

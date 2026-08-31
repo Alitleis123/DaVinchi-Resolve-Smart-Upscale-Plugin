@@ -47,7 +47,10 @@ def installation(tmp_path, repo_root, make_anime):
         shutil.move(str(make_anime(name=clip_name, holds=holds)), src)
 
         lua = LuaRuntime(unpack_returned_tuples=True)
-        H = lua.eval(f'dofile("{HARNESS}")')
+        # Forward slashes: a Windows path interpolated into Lua source turns
+        # backslashes into escape sequences, and "D:\a\..." fails to parse.
+        # Lua accepts forward slashes on Windows.
+        H = lua.eval(f'dofile("{HARNESS.as_posix()}")')
         H.real_execute = True
         H.load(str(comp / "Eternal2x.lua"), str(src))
         H.plugin_root = str(plugin)
