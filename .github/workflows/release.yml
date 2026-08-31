@@ -1,0 +1,54 @@
+name: Release
+
+# Publishing is driven by the tag, and the tag is derived from VERSION by
+# Installer/build_release.py. Doing it here rather than by hand is what stops
+# the archives, the tag and update/latest.json from drifting apart, which is
+# how 0.2.0 shipped download links that pointed at a tag that never existed.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the tag matches VERSION
+        if: github.event_name == 'push'
+        run: |
+          version=$(python -c "print(open('VERSION',encoding='utf-8-sig').read().strip())")
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match VERSION ${version}."
+            echo "The tag must be v${version} or the download URLs will 404."
+            exit 1
+          fi
+
+      - name: Build, publish and verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python Installer/build_release.py --publish
+
+      - name: Commit the refreshed update feed
+        run: |
+          if git diff --quiet -- update/latest.json; then
+            echo "update/latest.json is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add update/latest.json
+          git commit -m "Refresh the update feed for $(cat VERSION)"
+          git push origin HEAD:main
