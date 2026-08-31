@@ -66,6 +66,12 @@ if not file_exists(ui_script) then
     return
 end
 
+-- The UI script lives in the plugin folder, but the config lives here next to
+-- the launcher. Hand both down so the UI does not have to guess from its own
+-- location and end up treating Installer/ as the repo root.
+_G.ETERNAL2X_CONF = join_path(root, "Eternal2x.conf")
+_G.ETERNAL2X_ROOT = repo_root
+
 local ok, err = pcall(dofile, ui_script)
 if not ok then
     print("[Eternal2x] Failed to launch UI: " .. tostring(err))

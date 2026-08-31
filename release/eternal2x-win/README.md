@@ -1,90 +1,155 @@
-# Eternal2x (DaVinci Resolve Smart Upscale)
+# Eternal2x
 
-Eternal2x is a creator-friendly smart upscale workflow for DaVinci Resolve. It detects motion, lets you refine cut points via timeline markers, and then runs a clean, minimal pipeline to prep clips for 2x upscale and interpolation. The UI is intentionally simple: 4 buttons and 1 slider.
+Smooth 2x for hand-drawn animation, inside DaVinci Resolve Studio.
 
-## What It Does
-- Detects motion and places clearly labeled `[DSU]` markers on the selected clip or timeline for quick preview and manual adjustment.
-- Cuts at marker positions and converts resulting clips into 1-frame segments (for precise interpolation control).
-- Regroups the timeline to remove gaps and make the sequence continuous.
-- Runs a final pass: fixed 2x upscale + interpolation gated by sensitivity.
+Anime is drawn on 2s or 3s: the artist draws twelve pictures a second and each
+one is held for two or three frames to fill 24fps. That is why anime looks
+stepped when you slow it down, and why running it straight through a frame
+interpolator does nothing useful. Most neighbouring frames are identical, so
+there is no motion to interpolate between them.
 
-## UI
-- Buttons: `Detect`, `Sequence`, `Regroup`, `Upscale and Interpolate`, `Check for Updates`
-- Slider: `Interpolate Sensitivity` (higher = less interpolation, lower = more)
+Eternal2x recovers the real drawings first, then rebuilds the shot.
+
+```
+source     A A B B C C C D D        9 frames, held on 2s
+drawings   A   B   C     D          4 unique drawings
+rebuilt    A a B b C c c D          in-betweens generated, C stays a held pose
+```
+
+The result has the same length and frame rate as the clip you started with, so
+it drops straight back into your edit.
+
+## What it does
+
+- Finds duplicated frames and works out whether the clip is on 1s, 2s or 3s.
+- Rebuilds the motion with optical flow, generating the in-between frames that
+  were never drawn.
+- Keeps deliberate held poses still, instead of smearing them into drift.
+- Cuts stay hard. Blending across a scene change would show both shots at once,
+  so it snaps instead.
+- Upscales 2x using Resolve's Super Scale.
+
+It works like Twixtor without the warping. Where forward and backward motion
+disagree, which is where optical flow normally tears, it fades to a soft
+dissolve rather than inventing a broken frame.
 
 ## Requirements
-- DaVinci Resolve 18+ (Free or Studio)
-- Python 3.8+ installed and available on your system PATH ([Download Python](https://www.python.org/downloads/))
+
+- **DaVinci Resolve Studio** 18 or newer. Super Scale and Optical Flow are
+  Studio features, so the free edition cannot do the upscale. Eternal2x detects
+  it and tells you rather than silently skipping it.
+- Python 3.8+ on your PATH. The one-click installer sets up a private Python if
+  you do not have one.
 
 ## Install
 
-### Option A: One-Click Installer (Recommended)
+### One-click
 
-1. Extract the downloaded zip.
-2. Double-click **`Eternal2xInstaller.exe`** (Windows) or run the installer app (macOS).
-3. The installer automatically:
-   - Verifies Python is installed (opens python.org if not)
-   - Installs required Python packages (`numpy`, `opencv-python`)
-   - Copies the plugin into DaVinci Resolve's scripts folder
-   - Writes the configuration file
-4. Restart DaVinci Resolve.
-5. Open: **Workspace → Scripts → Eternal2x**
+1. Extract the download.
+2. Run **`Eternal2xInstaller.exe`** on Windows, or the installer app on macOS.
+3. It checks for Python, installs `numpy` and `opencv-python`, copies the
+   plugin into Resolve's scripts folder and writes the config.
+4. Restart Resolve and open **Workspace → Scripts → Eternal2x**.
 
-### Option B: Manual Install
+### Manual
 
-If you prefer to install manually or the GUI installer doesn't work:
+```
+pip install numpy opencv-python
+python Installer/install_eternal2x.py
+```
 
-1. Install Python packages:
-   ```
-   pip install numpy opencv-python
-   ```
+Then restart Resolve.
 
-2. Run the install script from the plugin folder:
-   ```
-   python Installer/install_eternal2x.py
-   ```
+The installer writes to Resolve's Comp scripts folder:
 
-3. Restart DaVinci Resolve.
-4. Open: **Workspace → Scripts → Eternal2x**
-
-### Install Locations
-
-The installer copies files to:
 - **Windows:** `%APPDATA%\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Comp\`
 - **macOS:** `~/Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Scripts/Comp/`
 
-> **Important:** Do not move or rename the plugin folder after installing. The config file stores the path to this folder. If you move it, re-run the installer.
+The config records where the plugin folder is, so re-run the installer if you
+move it.
 
-## Auto-Update Behavior
-- Eternal2x checks for updates automatically at startup (configurable).
-- If a newer version exists for your platform, it downloads and applies update files.
-- You can also trigger this manually using `Check for Updates` in the plugin UI.
-- After an update is applied, restart Resolve to load the new version.
-- Re-run the installer only if you move the plugin folder or the Scripts folder is cleared.
+## Using it
 
-## Quick Start
-1. Open a timeline and select the clip you want to process.
+1. Select a clip on your timeline.
 2. Open **Workspace → Scripts → Eternal2x**.
-3. Click **Detect** to analyze motion and place markers. Adjust any markers that need fine-tuning directly on the timeline.
-4. Click **Sequence** to cut at marker positions and generate 1-frame segments.
-5. Click **Regroup** to remove gaps and make the sequence continuous.
-6. Set **Interpolate Sensitivity** and click **Upscale + Interpolate**.
+3. Click **Analyse**. It reads the clip and tells you what it found, for
+   example `1438 frames, 719 unique drawings (719 held, 50%). Animated on 2s.`
+   Nothing is changed, so this is safe to run on anything.
+4. Click **Smooth Clip**.
 
-## How It Works (Under the Hood)
-- Motion scores are computed per frame from the clip using tile-based detail analysis.
-- Frames above the sensitivity threshold are grouped into segments. Tiny bursts are filtered out and nearby segments are merged.
-- Marker positions (after your manual edits) are the source of truth for cutting.
-- Upscale is fixed at 2x. Optical Flow interpolation is applied only to segments with detected motion; static segments use Nearest for speed.
+The render runs in the background and the panel shows progress, so Resolve
+stays usable while it works. When it finishes, the rebuilt clip is imported and
+added to the end of your timeline.
+
+### Settings
+
+| Setting | What it does |
+|---|---|
+| **Quality** | `Fast` for a quick look, `Better` for normal work, `Best` tracks fine detail like eyes and fingers at the cost of speed. |
+| **Hold pattern** | Leave on `Auto detect`. Force `On 2s` or `On 3s` if a clip has unusual timing that trips the detector. |
+| **Output** | `Image sequence` is lossless and always imports. `MP4` is a single compact file but lossy. `AVI` is a lossless single file that some Resolve builds will not import. |
+| **Upscale 2x** | Applies Resolve's Super Scale to the imported clip. |
+| **Interpolate** | Off means de-duplicate only, without generating in-betweens. |
+
+Settings are remembered between sessions.
+
+### What it will not do
+
+If a clip has no duplicated frames, Eternal2x says so and stops. Live action
+and animation already on 1s have nothing to recover, and smoothing them would
+only invent motion that was never there.
+
+## From the command line
+
+Every button is a thin wrapper around one module, so you can script it:
+
+```
+python -m Stages.resolve_smooth --video shot.mov --analyse
+python -m Stages.resolve_smooth --video shot.mov --quality best --format mp4
+python -m Stages.resolve_smooth --video shot.mov --base-hold 3 --no-upscale
+```
+
+`--video` skips Resolve entirely and writes the result next to the source.
+Add `--json` for a machine-readable summary.
+
+## Updates
+
+Eternal2x checks for updates at startup, or on demand with the
+**Check for Updates** button. Updates are verified against a SHA-256 checksum
+before being applied. Restart Resolve afterwards.
 
 ## Troubleshooting
 
 | Problem | Fix |
-|---------|-----|
-| "Missing repo root" in status bar | Re-run `python Installer/install_eternal2x.py` |
-| "Could not import DaVinciResolveScript" | Make sure you launched the script from inside Resolve (Workspace → Scripts) |
-| Detect is slow on long clips | This is expected for high-frame-count clips. The sensitivity slider does not affect speed. |
-| No markers appear after Detect | Lower the sensitivity slider and try again — your clip may have very subtle motion. |
-| Python not found | Make sure Python is installed and on your system PATH. On macOS, use `python3`. |
+|---|---|
+| "Plugin folder not configured" | Re-run `python Installer/install_eternal2x.py`. |
+| "Could not reach Resolve" | Open the panel from Workspace → Scripts, not from a terminal. |
+| "No clip selected" | Click a clip on the timeline, then press **Use Selected Clip**. |
+| Analyse says nothing to do | The clip has no duplicated frames. It is live action, or already on 1s. |
+| Progress seems stuck | Press **Refresh Progress**. If a run was interrupted, press **Reset**. |
+| Resolve would not import the render | The render still finished. The panel prints where it is, so drag it into your media pool. Switching Output to `Image sequence` avoids this. |
+| Upscale skipped | Super Scale needs Resolve Studio. |
+| Something else | Run `python -m Stages.resolve_probe` from Workspace → Scripts. It reports exactly which API methods your Resolve build offers. |
+
+## Development
+
+```
+./test.sh
+```
+
+235+ tests, no Resolve required. The suite fakes the Resolve scripting API and
+runs the Lua panel under an embedded Lua runtime, so buttons, commands and the
+full render pipeline are all covered headlessly. See `tests/README.md`.
+
+To cut a release:
+
+```
+python Installer/build_release.py
+```
+
+This rebuilds the release folders, zips them and writes the checksums into
+`update/latest.json`.
 
 ## Questions
+
 Email `Justlighttbusiness@gmail.com`

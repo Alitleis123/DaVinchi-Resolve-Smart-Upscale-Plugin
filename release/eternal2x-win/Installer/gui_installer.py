@@ -23,6 +23,15 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk
 
+# The config format lives with the command-line installer so the two cannot
+# drift. This runs standalone and from a PyInstaller bundle, where the repo
+# root is not on the path, so fall back to importing the sibling module.
+try:
+    from Installer.install_eternal2x import write_config
+except ImportError:  # pragma: no cover - depends on how this was launched
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from install_eternal2x import write_config
+
 # ---------------------------------------------------------------------------
 # Python download sources
 # ---------------------------------------------------------------------------
@@ -547,7 +556,7 @@ class InstallerApp:
         required = [
             self.repo_root / "Installer" / "Eternal2xLauncher.lua",
             self.repo_root / "Installer" / "Eternal2x.lua",
-            self.repo_root / "Stages" / "resolve_detect_markers.py",
+            self.repo_root / "Stages" / "resolve_smooth.py",
             self.repo_root / "Pipeline" / "config.py",
         ]
         missing = [str(p) for p in required if not p.exists()]
@@ -624,14 +633,8 @@ class InstallerApp:
         self.root.after(0, self._log, f"  Launcher: {dest_lua}", "ok")
 
         # --- Step 5: Write config ---
-        conf_path = dest_dir / "Eternal2x.conf"
-        conf_path.write_text(
-            f"repo_root={self.repo_root}\n"
-            f"python={python_path}\n"
-            f"update_url={DEFAULT_UPDATE_URL}\n"
-            "auto_update=true\n",
-            encoding="utf-8",
-        )
+        conf_path = write_config(dest_dir, self.repo_root, python_path,
+                                 update_url=DEFAULT_UPDATE_URL)
         self.root.after(0, self._log, f"  Config:   {conf_path}", "ok")
 
         # --- Done ---
