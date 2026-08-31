@@ -152,10 +152,16 @@ def zip_folder(folder: Path) -> Path:
     if archive.exists():
         archive.unlink()
 
-    files = sorted(p for p in folder.rglob("*") if p.is_file())
+    # Sort by the archive entry name, not by Path. Path comparison is
+    # case-insensitive on Windows and case-sensitive elsewhere, so sorting
+    # paths would order the entries differently per platform and the archives
+    # would stop being reproducible across machines.
+    entries = sorted(
+        (f"{folder.name}/{path.relative_to(folder).as_posix()}", path)
+        for path in folder.rglob("*") if path.is_file()
+    )
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
-        for path in files:
-            name = f"{folder.name}/{path.relative_to(folder).as_posix()}"
+        for name, path in entries:
             info = zipfile.ZipInfo(name, date_time=ZIP_TIMESTAMP)
             info.compress_type = zipfile.ZIP_DEFLATED
             # Regular file, 0644, so the archive does not carry local umask.

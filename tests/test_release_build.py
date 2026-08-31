@@ -79,11 +79,22 @@ def test_archive_entries_have_a_fixed_timestamp(built):
     assert stamps == {builder.ZIP_TIMESTAMP}
 
 
-def test_archive_entries_are_sorted(built):
+def test_archive_entries_are_sorted_the_same_way_everywhere(built):
+    """Case-sensitive byte order, not the platform's path ordering.
+
+    Path comparison is case-insensitive on Windows, so sorting paths rather
+    than entry names put Eternal2x.lua on a different side of build_release.py
+    depending on the machine, and the archives stopped matching across
+    platforms.
+    """
     archive = builder.zip_folder(builder.build_folder("eternal2x-win"))
     with zipfile.ZipFile(archive) as zf:
         names = zf.namelist()
-    assert names == sorted(names)
+    assert names == sorted(names), "entries are not in case-sensitive order"
+    # An explicit pin: uppercase sorts before lowercase.
+    installer = [n for n in names if n.startswith("eternal2x-win/Installer/")]
+    assert installer.index("eternal2x-win/Installer/Eternal2x.lua") < \
+        installer.index("eternal2x-win/Installer/build_release.py")
 
 
 # --------------------------------------------------------------------------
