@@ -182,16 +182,20 @@ def test_readme_documents_every_button_the_panel_has(repo_root):
 
 
 def test_readme_documents_every_command_line_flag(repo_root):
-    """The README advertises the CLI, so its flags must be real."""
-    from Stages.resolve_smooth import build_parser
+    """The README advertises two command lines, so its flags must all be real."""
+    from Installer.build_release import build_parser as release_parser
+    from Stages.resolve_smooth import build_parser as stage_parser
+
+    known = {opt
+             for parser in (stage_parser(), release_parser())
+             for action in parser._actions
+             for opt in action.option_strings}
 
     readme = (repo_root / "README.md").read_text(encoding="utf-8")
-    known = {opt for action in build_parser()._actions for opt in action.option_strings}
-
     for flag in set(re.findall(r"(--[a-z][a-z-]+)", readme)):
-        if flag in {"--help"}:
+        if flag == "--help":
             continue
-        assert flag in known, f"README documents {flag}, which the stage does not accept"
+        assert flag in known, f"README documents {flag}, which nothing accepts"
 
 
 def test_readme_states_the_studio_requirement(repo_root):
