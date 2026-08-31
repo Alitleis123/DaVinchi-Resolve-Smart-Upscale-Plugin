@@ -11,7 +11,6 @@ from __future__ import annotations
 import hashlib
 import json
 import zipfile
-from pathlib import Path
 
 import pytest
 
