@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Eternal2x | Smart Upscale for DaVinci Resolve</title>
-    <meta name="description" content="Eternal2x is a smart upscale plugin for DaVinci Resolve. Detect motion, refine cuts, and upscale with interpolation — all from one simple panel.">
+    <title>Eternal2x | Smooth 2x for hand-drawn animation for DaVinci Resolve</title>
+    <meta name="description" content="Eternal2x is a smooth 2x for hand-drawn animation plugin for DaVinci Resolve. Detect motion, refine cuts, and upscale with interpolation — all from one simple panel.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -23,7 +23,7 @@
 <!-- Sidebar -->
 <nav class="sidebar" id="sidebar">
     <img src="assets/logo.png" alt="Eternal2x" class="sidebar-logo-img">
-    <div class="sidebar-tagline">Smart Upscale for DaVinci Resolve</div>
+    <div class="sidebar-tagline">Smooth 2x for hand-drawn animation for DaVinci Resolve</div>
 
     <div class="sidebar-section">Navigation</div>
     <ul class="sidebar-nav">
@@ -122,37 +122,37 @@
     <!-- How it works -->
     <div class="section">
         <h2 class="section-title">How it works</h2>
-        <p class="section-subtitle">4 buttons. 1 slider. That's the entire UI.</p>
+        <p class="section-subtitle">Two buttons. Analyse first, then rebuild.</p>
     </div>
 
     <div class="features">
         <div class="feature-card">
             <h3>
                 <svg class="feature-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                Detect Motion
+                Find the real drawings
             </h3>
-            <p>Analyzes every frame using tile-based motion scoring. Places labeled markers on your timeline so you can preview and fine-tune exactly where motion happens.</p>
+            <p>Animation drawn on 2s or 3s repeats each drawing two or three times. Eternal2x compares every frame to the one before it and works out which frames are genuinely new and which are held.</p>
         </div>
         <div class="feature-card">
             <h3>
                 <svg class="feature-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                Sequence
+                Read the timing
             </h3>
-            <p>Cuts at every marker position and converts clips into 1-frame segments for precise interpolation control. Your markers are the source of truth.</p>
+            <p>It reports whether the shot is on 1s, 2s or 3s before touching anything, so you can see what it found. Deliberate held poses are recognised and kept still rather than smoothed into drift.</p>
         </div>
         <div class="feature-card">
             <h3>
                 <svg class="feature-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-                Regroup
+                Fill in the gaps
             </h3>
-            <p>Removes gaps left over from cutting and makes the entire sequence continuous again. Markers shift to match the new positions automatically.</p>
+            <p>The in-between frames that were never drawn are generated with optical flow. Where the motion is too fast to reconstruct cleanly, it holds a real drawing instead of inventing a smeared one.</p>
         </div>
         <div class="feature-card">
             <h3>
                 <svg class="feature-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-                Upscale + Interpolate
+                Upscale 2x
             </h3>
-            <p>Applies 2x Super Scale to every clip. Motion segments get Optical Flow interpolation. Static segments use Nearest for speed. Smart, not brute-force.</p>
+            <p>The rebuilt clip comes back into your media pool with Resolve Super Scale applied, at the same length and frame rate as the original, ready to drop into your edit.</p>
         </div>
     </div>
 
@@ -169,7 +169,7 @@
                 <svg class="feature-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                 Built into Resolve
             </h3>
-            <p>No external software, no render-export-reimport loops. Eternal2x runs as a native Resolve script panel directly on your timeline.</p>
+            <p>Runs as a native Resolve script panel on your timeline. Rendering happens in the background, so Resolve stays usable while it works.</p>
         </div>
         <div class="feature-card">
             <h3>
@@ -183,14 +183,14 @@
                 <svg class="feature-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
                 Auto Updates
             </h3>
-            <p>Install once, stay current forever. Eternal2x checks for updates every time you open it and applies them silently in the background.</p>
+            <p>Install once, stay current. Eternal2x checks for updates when it opens and verifies every download against a checksum before applying it.</p>
         </div>
         <div class="feature-card">
             <h3>
                 <svg class="feature-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                Motion-Aware
+                Made for animation
             </h3>
-            <p>Only interpolates where it matters. Static areas stay fast. Motion areas get full Optical Flow treatment. You control the sensitivity.</p>
+            <p>Built for hand-drawn animation, not generic footage. If a clip has no duplicated frames it tells you and stops, rather than inventing motion that was never there.</p>
         </div>
     </div>
 
