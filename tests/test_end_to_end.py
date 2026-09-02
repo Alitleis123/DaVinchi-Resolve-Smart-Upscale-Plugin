@@ -59,20 +59,38 @@ def installation(tmp_path, repo_root, make_anime):
     return _open
 
 
-def finish(H, timeout: float = 120.0):
+# Generous, because a shared CI runner can be very slow and the cost of
+# waiting is nothing next to the cost of a flaky failure.
+FINISH_TIMEOUT = 300.0
+
+
+def finish(H, timeout: float = FINISH_TIMEOUT):
     """Wait for the background render, then let the panel pick up the result."""
-    status = Path(H.plugin_root) / ".eternal2x_status.json"
+    root = Path(H.plugin_root)
+    status = root / ".eternal2x_status.json"
     deadline = time.time() + timeout
+    last = None
+
     while time.time() < deadline:
         try:
-            if json.loads(status.read_text()).get("done"):
-                break
+            last = json.loads(status.read_text())
         except (OSError, ValueError):
-            pass
+            last = last
+        else:
+            if last.get("done"):
+                H.click("RefreshStatusBtn")
+                return
         time.sleep(0.05)
-    else:
-        raise AssertionError(f"the render never finished within {timeout}s")
-    H.click("RefreshStatusBtn")
+
+    # Say what actually happened, rather than just that time ran out.
+    log = root / ".eternal2x_last_run.log"
+    detail = log.read_text(errors="replace")[-2000:] if log.exists() else "(no log written)"
+    raise AssertionError(
+        f"the render did not finish within {timeout}s.\n"
+        f"last status: {last}\n"
+        f"command: {H.last_command()}\n"
+        f"log tail:\n{detail}"
+    )
 
 
 def outputs(src: Path):
@@ -196,7 +214,8 @@ def test_forcing_a_hold_pattern_reaches_the_render(installation):
 
 
 def test_a_second_run_does_not_overwrite_the_first(installation):
-    H, src = installation()
+    # Two full renders, so keep the clip short.
+    H, src = installation(holds=(2,) * 4)
     H.click("SmoothBtn")
     finish(H)
     H.click("SmoothBtn")
