@@ -24,7 +24,7 @@
 <!-- Sidebar -->
 <nav class="sidebar" id="sidebar">
     <img src="assets/logo.png" alt="Eternal2x" class="sidebar-logo-img">
-    <div class="sidebar-tagline">Smart Upscale for DaVinci Resolve</div>
+    <div class="sidebar-tagline">Smooth 2x for hand-drawn animation for DaVinci Resolve</div>
 
     <div class="sidebar-section">Navigation</div>
     <ul class="sidebar-nav">
@@ -95,48 +95,84 @@
 
         <div class="faq-item" onclick="this.classList.toggle('open')">
             <div class="faq-question">
-                "Missing repo root" error
+                "Plugin folder not configured"
                 <span class="faq-chevron">&#9660;</span>
             </div>
             <div class="faq-answer">
-                This means the plugin can't find the folder where you extracted it. The most common cause is
-                moving or renaming the plugin folder after installing. Re-run the installer from the new location.
+                The plugin cannot find the folder you extracted it to. The usual cause is moving or renaming
+                that folder after installing, since the config records its path. Re-run the installer from the
+                new location.
             </div>
         </div>
 
         <div class="faq-item" onclick="this.classList.toggle('open')">
             <div class="faq-question">
-                "Could not import DaVinciResolveScript"
+                "Could not reach Resolve"
                 <span class="faq-chevron">&#9660;</span>
             </div>
             <div class="faq-answer">
-                This error means the script is not running inside DaVinci Resolve. Make sure you're opening it from
-                <strong>Workspace &rarr; Scripts &rarr; Eternal2x</strong> inside Resolve, not by double-clicking the
-                Lua file directly.
+                The panel is not running inside DaVinci Resolve. Open it from
+                <strong>Workspace &rarr; Scripts &rarr; Eternal2x</strong>, not by double-clicking the Lua file.
             </div>
         </div>
 
         <div class="faq-item" onclick="this.classList.toggle('open')">
             <div class="faq-question">
-                Detect is slow on long clips
+                Rendering is slow on long clips
                 <span class="faq-chevron">&#9660;</span>
             </div>
             <div class="faq-answer">
-                This is expected. Motion detection analyzes every frame of the clip using OpenCV. A 30-second clip at
-                60fps means 1,800 frames to process. The sensitivity slider does not affect speed &mdash; only which
-                frames are marked as motion.
+                Every frame has to be read and every missing in-between generated, so the time scales with the
+                length of the clip. Ten seconds of 1080p takes roughly ten to twenty seconds depending on the
+                Quality setting. Resolve stays usable throughout, and <strong>Analyse</strong> is much quicker if
+                you only want to see what a clip contains.
             </div>
         </div>
 
         <div class="faq-item" onclick="this.classList.toggle('open')">
             <div class="faq-question">
-                No markers appear after Detect
+                Analyse says there is nothing to do
                 <span class="faq-chevron">&#9660;</span>
             </div>
             <div class="faq-answer">
-                Your clip may have very subtle motion that falls below the sensitivity threshold.
-                Lower the sensitivity slider (closer to 0) and try again. Also make sure you have a clip
-                selected on the timeline before clicking Detect.
+                The clip has no duplicated frames, so there is nothing to recover. It is either live action or
+                animation already drawn on 1s. Smoothing it would only invent motion that was never there, so
+                Eternal2x stops instead.
+            </div>
+        </div>
+
+        <div class="faq-item" onclick="this.classList.toggle('open')">
+            <div class="faq-question">
+                The upscale was skipped
+                <span class="faq-chevron">&#9660;</span>
+            </div>
+            <div class="faq-answer">
+                Super Scale is a DaVinci Resolve Studio feature. On the free edition Eternal2x tells you it
+                was skipped rather than silently leaving it out. De-duplication and smoothing still run.
+            </div>
+        </div>
+
+        <div class="faq-item" onclick="this.classList.toggle('open')">
+            <div class="faq-question">
+                Resolve would not import the result
+                <span class="faq-chevron">&#9660;</span>
+            </div>
+            <div class="faq-answer">
+                The render still finished. The panel prints where it is, so you can drag it into your media
+                pool. Setting <strong>Output</strong> to <code>Image sequence</code> avoids this, since Resolve
+                always imports those.
+            </div>
+        </div>
+
+        <div class="faq-item" onclick="this.classList.toggle('open')">
+            <div class="faq-question">
+                Progress seems stuck
+                <span class="faq-chevron">&#9660;</span>
+            </div>
+            <div class="faq-answer">
+                Press <strong>Refresh Progress</strong>. If a run was interrupted, press <strong>Reset</strong>
+                to clear it. For anything else, run <code>python -m Stages.resolve_probe</code> from
+                Workspace &rarr; Scripts, which reports exactly what your Resolve build supports.
             </div>
         </div>
 
@@ -299,43 +335,104 @@
 
     <div class="section" id="usage">
         <h2 class="section-title">How to Use</h2>
-        <p class="section-subtitle">The full workflow in 4 steps.</p>
+        <p class="section-subtitle">Analyse to see what you have, then rebuild it.</p>
 
         <div class="guide-step">
             <div class="step-number">1</div>
             <div class="step-content">
-                <h3>Detect</h3>
-                <p>Select a clip on your timeline. Adjust the sensitivity slider, then click <strong>Detect</strong>.
-                   Blue <code>[DSU]</code> markers will appear on your clip wherever motion was found.
-                   You can drag, delete, or add markers manually before continuing.</p>
+                <h3>Select a clip</h3>
+                <p>Click the clip you want on your timeline, then open
+                   <strong>Workspace &rarr; Scripts &rarr; Eternal2x</strong>. The panel shows the
+                   clip it picked up. If you select a different one, press
+                   <strong>Use Selected Clip</strong>.</p>
             </div>
         </div>
 
         <div class="guide-step">
             <div class="step-number">2</div>
             <div class="step-content">
-                <h3>Sequence</h3>
-                <p>Click <strong>Sequence</strong> to cut the clip at every marker position and convert each
-                   segment into a 1-frame clip for precise interpolation control.</p>
+                <h3>Analyse</h3>
+                <p>Click <strong>Analyse</strong>. Eternal2x reads the clip and reports what it found,
+                   for example <code>1438 frames, 719 unique drawings (719 held, 50%). Animated on 2s.</code>
+                   Nothing is changed, so this is safe to run on anything. If a clip has no duplicated
+                   frames it says so and stops.</p>
             </div>
         </div>
 
         <div class="guide-step">
             <div class="step-number">3</div>
             <div class="step-content">
-                <h3>Regroup</h3>
-                <p>Click <strong>Regroup</strong> to close all the gaps left over from cutting. Your timeline
-                   becomes continuous again and markers shift to match.</p>
+                <h3>Choose your settings</h3>
+                <p><strong>Quality</strong> trades speed for detail, with <code>Better</code> suiting most work.
+                   Leave <strong>Hold pattern</strong> on <code>Auto detect</code> unless a clip has unusual
+                   timing. <strong>Output</strong> defaults to a lossless image sequence, which Resolve always
+                   imports. Settings are remembered between sessions.</p>
             </div>
         </div>
 
         <div class="guide-step">
             <div class="step-number">4</div>
             <div class="step-content">
-                <h3>Upscale + Interpolate</h3>
-                <p>Click <strong>Upscale + Interpolate</strong>. Every clip gets 2x Super Scale.
-                   Motion segments get Optical Flow interpolation for smoothness. Static segments
-                   use Nearest for speed. Done.</p>
+                <h3>Smooth Clip</h3>
+                <p>Click <strong>Smooth Clip</strong>. The render runs in the background with a progress bar,
+                   so Resolve stays usable. When it finishes, the rebuilt clip is imported with 2x Super Scale
+                   applied and added to the end of your timeline, at the same length and frame rate as the
+                   original.</p>
+            </div>
+        </div>
+
+        <h2 class="section-title">What to expect</h2>
+        <p class="section-subtitle">How the result should look.</p>
+
+        <div class="guide-step">
+            <div class="step-content">
+                <h3>Held poses stay still</h3>
+                <p>A drawing held deliberately keeps its full length instead of drifting. Only the
+                   animation timing is smoothed.</p>
+            </div>
+        </div>
+
+        <div class="guide-step">
+            <div class="step-content">
+                <h3>Cuts stay hard</h3>
+                <p>Eternal2x never blends across a scene change, which would show both shots at once.</p>
+            </div>
+        </div>
+
+        <div class="guide-step">
+            <div class="step-content">
+                <h3>Very fast motion may stay stepped</h3>
+                <p>This is deliberate. Past a certain speed the areas a drawing uncovers exist in only one
+                   frame, so no in-between can be reconstructed. Eternal2x holds a real drawing rather than
+                   producing a smeared one.</p>
+            </div>
+        </div>
+
+        <h2 class="section-title">Staying up to date</h2>
+        <p class="section-subtitle">Updates arrive on their own.</p>
+
+        <div class="guide-step">
+            <div class="step-content">
+                <h3>Automatic</h3>
+                <p>Eternal2x checks for a new version each time the panel opens. If one is available it is
+                   downloaded, verified against a checksum, and applied. Restart Resolve afterwards to load it.
+                   You can turn this off with the <strong>Auto-update</strong> checkbox.</p>
+            </div>
+        </div>
+
+        <div class="guide-step">
+            <div class="step-content">
+                <h3>On demand</h3>
+                <p>Press <strong>Check for Updates</strong> at any time. If nothing has changed it says so and
+                   leaves your install alone. A failed check never stops you working, it is reported and skipped.</p>
+            </div>
+        </div>
+
+        <div class="guide-step">
+            <div class="step-content">
+                <h3>Re-running the installer</h3>
+                <p>Only needed if you move or rename the plugin folder, since the config records where it lives.
+                   Updates themselves do not require it.</p>
             </div>
         </div>
     </div>
